@@ -31,6 +31,7 @@
         <button data-view="mytasks">My Tasks</button>
         <button data-view="capacity">Capacity</button>
         <button data-view="reports">Reports</button>
+        <button id="auditNav" data-view="audit">Audit & History</button>
       </nav>
       <div class="sidebar-bottom">
         <label>Demo role<select id="roleSelect"><option>Senior Management</option><option>LTSE</option><option>TSE/JTSE</option></select></label>
@@ -50,6 +51,7 @@
 
   <aside id="drawer" class="drawer hidden"><button id="drawerClose" class="drawer-close">×</button><div id="drawerBody"></div></aside>
   <div id="modal" class="modal hidden"><div class="modal-card"><button id="modalClose" class="drawer-close">×</button><div id="modalBody"></div></div></div>
+  <div id="projectModal" class="project-modal hidden"><div class="project-modal-card"><button id="projectModalClose" class="drawer-close">×</button><div id="projectModalBody"></div></div></div>
   <div id="toast" class="toast hidden"></div>
   <script src="/app.js"></script>
 </body>
