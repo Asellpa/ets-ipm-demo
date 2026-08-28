@@ -36,11 +36,26 @@ function authRequired(req, res) { const session = sessionOf(req); if (!session) 
 function same(a, b) { const aa = Buffer.from(String(a)), bb = Buffer.from(String(b)); return aa.length === bb.length && crypto.timingSafeEqual(aa, bb); }
 function safeProject(p, role) { const x = structuredClone(p); if (!management(role)) delete x.pricing; return x; }
 function safeTask(t, role, p) { const x = structuredClone(t); if (p?.type === 'commercial' && p?.stage === 'RFQ' && !canEngineeringAtRFQ(role)) { delete x.mhEstimate; delete x.mhActual; delete x.department; delete x.action; delete x.remarks; delete x.dependency; } return x; }
-function log(db, text, req) { db.audit.unshift({ id: 'a' + Date.now(), text, user: userOf(req), ts: new Date().toLocaleString() }); db.audit = db.audit.slice(0, 100); }
+function log(db, text, req, meta = {}) {
+  db.audit.unshift({ id: 'a' + Date.now() + Math.random().toString(36).slice(2, 6), text, user: userOf(req), ts: new Date().toLocaleString(), ...meta });
+  db.audit = db.audit.slice(0, 250);
+}
 function notify(db, text) { db.notifications.unshift({ id: 'n' + Date.now(), text, read: false, ts: new Date().toLocaleString() }); db.notifications = db.notifications.slice(0, 50); }
 function send(res, code, obj, type = 'application/json') { const response = type === 'application/json' ? JSON.stringify(obj) : obj; res.writeHead(code, { 'Content-Type': type, 'Cache-Control': 'no-store' }); res.end(response); }
 function body(req) { return new Promise((resolve, reject) => { let s = ''; req.on('data', c => { s += c; if (s.length > 2e6) req.destroy(); }); req.on('end', () => { try { resolve(s ? JSON.parse(s) : {}); } catch (e) { reject(e); } }); req.on('error', reject); }); }
 function mime(p) { return p.endsWith('.css') ? 'text/css' : p.endsWith('.js') ? 'application/javascript' : p.endsWith('.html') ? 'text/html' : 'application/octet-stream'; }
+function taskLevel(task, project) {
+  if (task.level) return Number(task.level);
+  if (!task.wbs || !project?.wbs) return 3;
+  const remainder = String(task.wbs).replace(String(project.wbs), '').replace(/^\./, '');
+  return remainder ? remainder.split('.').length + 1 : 1;
+}
+function nextTaskWbs(db, project, parentWbs) {
+  const parent = String(parentWbs || project.wbs);
+  const children = db.tasks.filter(t => t.projectId === project.id && String(t.wbs).startsWith(parent + '.') && String(t.wbs).split('.').length === parent.split('.').length + 1);
+  const nums = children.map(t => Number(String(t.wbs).split('.').pop())).filter(Number.isFinite);
+  return `${parent}.${(nums.length ? Math.max(...nums) : 0) + 1}`;
+}
 
 const server = http.createServer(async (req, res) => {
   try {
@@ -65,36 +80,74 @@ const server = http.createServer(async (req, res) => {
 
     if (req.method === 'GET' && u.pathname === '/api/bootstrap') {
       const db = read(), pmap = Object.fromEntries(db.projects.map(p => [p.id, p]));
-      return send(res, 200, { role, user: userOf(req), userId: sessionOf(req)?.id, users: db.users, projects: db.projects.map(p => safeProject(p, role)), tasks: db.tasks.map(t => safeTask(t, role, pmap[t.projectId])), notifications: db.notifications, audit: db.audit, permissions: { management: management(role), canAssign: canAssign(role), canCreateCommercial: management(role) } });
+      return send(res, 200, {
+        role,
+        user: userOf(req),
+        userId: sessionOf(req)?.id,
+        users: db.users,
+        projects: db.projects.map(p => safeProject(p, role)),
+        tasks: db.tasks.map(t => ({ ...safeTask(t, role, pmap[t.projectId]), level: taskLevel(t, pmap[t.projectId]) })),
+        notifications: db.notifications,
+        audit: management(role) ? db.audit : [],
+        permissions: { management: management(role), canAssign: canAssign(role), canCreateCommercial: management(role), canAudit: management(role) }
+      });
     }
+
     if (req.method === 'PATCH' && u.pathname.startsWith('/api/tasks/')) {
       const id = u.pathname.split('/').pop(), db = read(), t = db.tasks.find(x => x.id === id);
       if (!t) return send(res, 404, { error: 'Task not found' });
-      const b = await body(req), allowed = ['status', 'mhActual', 'flag', 'flagReason', 'remarks', 'dependency'];
-      if (canAssign(role)) allowed.push('assignee', 'priority', 'mhEstimate', 'dueDate');
-      for (const [k, v] of Object.entries(b)) if (allowed.includes(k)) t[k] = v;
-      if (Number(t.mhActual) > Number(t.mhEstimate) && !t.flag) t.flag = 'Needs review';
-      log(db, `Updated task ${t.wbs}: ${Object.keys(b).join(', ')}`, req);
-      if (b.assignee) notify(db, `Task ${t.wbs} assigned to ${b.assignee}`);
-      write(db);
+      const before = structuredClone(t), b = await body(req), allowed = ['status', 'mhActual', 'flag', 'flagReason', 'remarks', 'dependency'];
+      if (canAssign(role)) allowed.push('assignee', 'priority', 'mhEstimate', 'dueDate', 'department');
+      const changed = [];
+      for (const [k, v] of Object.entries(b)) {
+        if (allowed.includes(k) && String(t[k] ?? '') !== String(v ?? '')) { t[k] = v; changed.push(k); }
+      }
+      if (Number(t.mhActual) > Number(t.mhEstimate) && !t.flag) { t.flag = 'Needs review'; changed.push('flag'); }
+      if (changed.length) {
+        log(db, `Updated task ${t.wbs}: ${changed.join(', ')}`, req, { entityType: 'task', entityId: t.id, projectId: t.projectId, changes: changed.map(k => ({ field: k, from: before[k] ?? '', to: t[k] ?? '' })) });
+        if (b.assignee && before.assignee !== b.assignee) notify(db, `Task ${t.wbs} assigned to ${b.assignee}`);
+        write(db);
+      }
       return send(res, 200, { ok: true, task: t });
     }
+
     if (req.method === 'POST' && u.pathname === '/api/projects') {
       const db = read(), b = await body(req), type = b.type || 'internal_eer';
       if (type === 'commercial' && !management(role)) return send(res, 403, { error: 'Only Senior Management can create Commercial projects' });
       const id = 'p-' + Date.now();
       const p = { id, wbs: type === 'internal_eer' ? `EER-${String(db.projects.filter(x => x.type === 'internal_eer').length + 1).padStart(3, '0')}` : `P-${Date.now().toString().slice(-5)}`, type, client: b.client || 'Internal', title: b.title || 'Untitled project', aircraft: b.aircraft || '', registration: '', releaseType: b.releaseType || '', sector: b.sector || '', owner: b.owner || userOf(req), priority: b.priority || 'Normal', stage: b.stage || 'RFQ', status: b.stage || 'RFQ', scope: b.scope || '', edd: b.edd || '', startDate: new Date().toISOString().slice(0, 10), pricing: management(role) ? { rom: b.rom || '', poStatus: '', negotiationNotes: '' } : {}, clientFocal: '', doaFocal: '', remarks: '' };
-      db.projects.unshift(p); log(db, `Created ${type === 'commercial' ? 'Commercial project' : 'Internal EER'} ${p.wbs}`, req);
+      db.projects.unshift(p);
+      log(db, `Created ${type === 'commercial' ? 'Commercial project' : 'Internal EER'} ${p.wbs}`, req, { entityType: 'project', entityId: p.id, projectId: p.id });
       if (type === 'internal_eer' && !management(role)) notify(db, `New Internal EER ${p.wbs} created by ${userOf(req)} — LTSE / Senior Management notified`);
       write(db); return send(res, 200, { ok: true, project: safeProject(p, role) });
     }
+
     if (req.method === 'POST' && u.pathname === '/api/tasks') {
-      const db = read(); if (!canAssign(role)) return send(res, 403, { error: 'Only LTSE and above can assign/create tasks' });
-      const b = await body(req), p = db.projects.find(x => x.id === b.projectId); if (!p) return send(res, 404, { error: 'Project not found' });
-      const id = 't-' + Date.now(), count = db.tasks.filter(x => x.projectId === p.id).length + 1;
-      const t = { id, projectId: p.id, wbs: `${p.wbs}.${count}`, title: b.title || 'New task', department: b.department || 'Engineering', assignee: b.assignee || 'Unassigned', priority: b.priority || 'Normal', status: b.assignee ? 'Assigned' : 'To Do', mhEstimate: Number(b.mhEstimate || 0), mhActual: 0, startDate: new Date().toISOString().slice(0, 10), dueDate: b.dueDate || '', dependency: '', action: '', remarks: '', flag: '', flagReason: '' };
-      db.tasks.push(t); log(db, `Created task ${t.wbs}`, req); if (t.assignee !== 'Unassigned') notify(db, `Task ${t.wbs} assigned to ${t.assignee}`); write(db); return send(res, 200, { ok: true, task: t });
+      const db = read();
+      if (!canAssign(role)) return send(res, 403, { error: 'Only LTSE and above can assign/create tasks' });
+      const b = await body(req), p = db.projects.find(x => x.id === b.projectId);
+      if (!p) return send(res, 404, { error: 'Project not found' });
+      const parentWbs = b.parentWbs || p.wbs;
+      const wbs = nextTaskWbs(db, p, parentWbs);
+      const level = Math.max(2, wbs.split('.').length - String(p.wbs).split('.').length + 1);
+      const id = 't-' + Date.now();
+      const t = {
+        id, projectId: p.id, wbs, parentWbs, level,
+        title: b.title || 'New task',
+        department: b.department || 'Engineering',
+        assignee: b.assignee || 'Unassigned',
+        priority: b.priority || 'Normal',
+        status: b.status || (b.assignee ? 'Assigned' : 'To Do'),
+        mhEstimate: Number(b.mhEstimate || 0), mhActual: 0,
+        startDate: new Date().toISOString().slice(0, 10), dueDate: b.dueDate || '',
+        dependency: b.dependency || '', action: b.action || '', remarks: b.remarks || '', flag: '', flagReason: ''
+      };
+      db.tasks.push(t);
+      log(db, `Created task ${t.wbs} — ${t.title}`, req, { entityType: 'task', entityId: t.id, projectId: p.id, changes: [{ field: 'created', from: '', to: t.title }] });
+      if (t.assignee !== 'Unassigned') notify(db, `Task ${t.wbs} assigned to ${t.assignee}`);
+      write(db); return send(res, 200, { ok: true, task: t });
     }
+
     if (req.method === 'POST' && u.pathname === '/api/notifications/read') { const db = read(); db.notifications.forEach(n => n.read = true); write(db); return send(res, 200, { ok: true }); }
     if (req.method === 'POST' && u.pathname === '/api/reset') { fs.copyFileSync(SEED, DB); return send(res, 200, { ok: true }); }
     if (req.method === 'GET' && u.pathname === '/api/export.csv') {
@@ -111,4 +164,4 @@ const server = http.createServer(async (req, res) => {
   } catch (e) { console.error(e); send(res, 500, { error: 'Server error' }); }
 });
 
-server.listen(PORT, () => console.log(`ETS IPM running at http://localhost:${PORT}`));
+server.listen(PORT, '0.0.0.0', () => console.log(`ETS IPM running on port ${PORT}`));
