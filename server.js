@@ -6,162 +6,68 @@ const { URL } = require('url');
 
 const PORT = process.env.PORT || 5174;
 const ROOT = __dirname;
-const DB = path.join(ROOT, 'data', 'db.json');
-const SEED = path.join(ROOT, 'data', 'seed.json');
-const DEMO_USER = {
-  name: process.env.DEMO_USER || 'Stephan',
-  id: process.env.DEMO_ID || '123',
-  password: process.env.DEMO_PASSWORD || 'Testing'
-};
+const DATA_DIR = path.join(ROOT, 'data');
+const DB = path.join(DATA_DIR, 'db.json');
+const SEED = path.join(DATA_DIR, 'seed.json');
+const DEMO_USER = { name: process.env.DEMO_USER || 'Stephan', id: process.env.DEMO_ID || '123', password: process.env.DEMO_PASSWORD || 'Testing' };
+const ROLES = ['Admin', 'Senior Management', 'LTSE', 'TSE/JTSE'];
 const sessions = new Map();
-
+if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
 if (!fs.existsSync(DB) && fs.existsSync(SEED)) fs.copyFileSync(SEED, DB);
+function normalizeDb(db) { db.users ||= []; db.projects ||= []; db.tasks ||= []; db.notifications ||= []; db.audit ||= []; db.comments ||= []; db.escalations ||= []; db.leave ||= []; db.settings ||= { standardHoursPerDay: 8, commercialFields: ['pricing','rom','poStatus','negotiationNotes','offerDetails','agreementDetails'], departments: ['Certification','M&I','P&S','Engineering','DOA','Internal'] }; return db; }
+const read = () => normalizeDb(JSON.parse(fs.readFileSync(DB, 'utf8')));
+const write = db => fs.writeFileSync(DB, JSON.stringify(normalizeDb(db), null, 2));
+const isManagement = role => role === 'Admin' || role === 'Senior Management';
+const canAssign = role => isManagement(role) || role === 'LTSE';
+const roleOf = req => ROLES.includes(req.headers['x-role']) ? req.headers['x-role'] : 'Senior Management';
+function cookies(req) { return Object.fromEntries(String(req.headers.cookie || '').split(';').map(v => v.trim()).filter(Boolean).map(v => { const i=v.indexOf('='); return [decodeURIComponent(v.slice(0,i)),decodeURIComponent(v.slice(i+1))]; })); }
+function sessionOf(req){const token=cookies(req).ets_session;return token&&sessions.get(token)}
+function authRequired(req,res){const s=sessionOf(req);if(!s){send(res,401,{error:'Authentication required'});return null}return s}
+const userOf=req=>sessionOf(req)?.name||'Unknown';
+function same(a,b){const aa=Buffer.from(String(a)),bb=Buffer.from(String(b));return aa.length===bb.length&&crypto.timingSafeEqual(aa,bb)}
+function id(prefix){return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2,7)}`}
+function now(){return new Date().toISOString()}
+function body(req){return new Promise((resolve,reject)=>{let s='';req.on('data',c=>{s+=c;if(s.length>5e6)req.destroy()});req.on('end',()=>{try{resolve(s?JSON.parse(s):{})}catch(e){reject(e)}});req.on('error',reject)})}
+function send(res,code,obj,type='application/json',extra={}){const out=type==='application/json'?JSON.stringify(obj):obj;res.writeHead(code,{'Content-Type':type,'Cache-Control':'no-store',...extra});res.end(out)}
+function mime(p){return p.endsWith('.css')?'text/css':p.endsWith('.js')?'application/javascript':p.endsWith('.html')?'text/html':'application/octet-stream'}
+function safeProject(p,role){const x=structuredClone(p);if(!isManagement(role))delete x.pricing;return x}
+function safeTask(t,role,p){const x=structuredClone(t);if(p?.type==='commercial'&&p?.stage==='RFQ'&&role==='TSE/JTSE'){for(const k of ['mhEstimate','mhActual','department','dependency','action','remarks'])delete x[k]}return x}
+function audit(db,req,text,meta={}){db.audit.unshift({id:id('a'),ts:now(),user:userOf(req),role:roleOf(req),text,...meta});db.audit=db.audit.slice(0,1000)}
+function notify(db,text,recipients=['All']){db.notifications.unshift({id:id('n'),ts:now(),text,recipients,readBy:[]});db.notifications=db.notifications.slice(0,250)}
+function projectById(db,pid){return db.projects.find(p=>p.id===pid)}
+function taskLevel(t,p){if(t.level)return Number(t.level);const pw=String(p?.wbs||''),tw=String(t.wbs||'');if(!pw||!tw)return 3;const rest=tw.startsWith(pw)?tw.slice(pw.length).replace(/^\./,''):tw;return rest?rest.split('.').length+1:1}
+function nextWbs(db,p,parentWbs){const parent=String(parentWbs||p.wbs),depth=parent.split('.').length+1;const nums=db.tasks.filter(t=>t.projectId===p.id&&String(t.wbs).startsWith(parent+'.')&&String(t.wbs).split('.').length===depth).map(t=>Number(String(t.wbs).split('.').pop())).filter(Number.isFinite);return `${parent}.${(nums.length?Math.max(...nums):0)+1}`}
+function diff(before,after,fields){return fields.filter(k=>JSON.stringify(before[k]??'')!==JSON.stringify(after[k]??'')).map(k=>({field:k,from:before[k]??'',to:after[k]??''}))}
+function csvEscape(v){return `"${String(v??'').replaceAll('"','""')}"`}
+function spreadHours(startDate,total,max=8){const result={};if(!startDate||!Number(total))return result;let d=new Date(`${startDate}T00:00:00`),left=Number(total),guard=0;while(left>0&&guard++<500){const day=d.getDay();if(day!==0&&day!==6){const h=Math.min(max,left);result[d.toISOString().slice(0,10)]=h;left-=h}d.setDate(d.getDate()+1)}return result}
 
-const read = () => JSON.parse(fs.readFileSync(DB, 'utf8'));
-const write = data => fs.writeFileSync(DB, JSON.stringify(data, null, 2));
-const management = role => role === 'Senior Management';
-const canAssign = role => role === 'Senior Management' || role === 'LTSE';
-const canEngineeringAtRFQ = role => role === 'Senior Management' || role === 'LTSE';
-const roleOf = req => req.headers['x-role'] || 'Senior Management';
-
-function cookies(req) {
-  return Object.fromEntries(String(req.headers.cookie || '').split(';').map(v => v.trim()).filter(Boolean).map(v => {
-    const i = v.indexOf('=');
-    return [decodeURIComponent(v.slice(0, i)), decodeURIComponent(v.slice(i + 1))];
-  }));
-}
-function sessionOf(req) { const token = cookies(req).ets_session; return token && sessions.get(token); }
-const userOf = req => sessionOf(req)?.name || 'Unknown';
-function authRequired(req, res) { const session = sessionOf(req); if (!session) { send(res, 401, { error: 'Authentication required' }); return null; } return session; }
-function same(a, b) { const aa = Buffer.from(String(a)), bb = Buffer.from(String(b)); return aa.length === bb.length && crypto.timingSafeEqual(aa, bb); }
-function safeProject(p, role) { const x = structuredClone(p); if (!management(role)) delete x.pricing; return x; }
-function safeTask(t, role, p) { const x = structuredClone(t); if (p?.type === 'commercial' && p?.stage === 'RFQ' && !canEngineeringAtRFQ(role)) { delete x.mhEstimate; delete x.mhActual; delete x.department; delete x.action; delete x.remarks; delete x.dependency; } return x; }
-function log(db, text, req, meta = {}) {
-  db.audit.unshift({ id: 'a' + Date.now() + Math.random().toString(36).slice(2, 6), text, user: userOf(req), ts: new Date().toLocaleString(), ...meta });
-  db.audit = db.audit.slice(0, 250);
-}
-function notify(db, text) { db.notifications.unshift({ id: 'n' + Date.now(), text, read: false, ts: new Date().toLocaleString() }); db.notifications = db.notifications.slice(0, 50); }
-function send(res, code, obj, type = 'application/json') { const response = type === 'application/json' ? JSON.stringify(obj) : obj; res.writeHead(code, { 'Content-Type': type, 'Cache-Control': 'no-store' }); res.end(response); }
-function body(req) { return new Promise((resolve, reject) => { let s = ''; req.on('data', c => { s += c; if (s.length > 2e6) req.destroy(); }); req.on('end', () => { try { resolve(s ? JSON.parse(s) : {}); } catch (e) { reject(e); } }); req.on('error', reject); }); }
-function mime(p) { return p.endsWith('.css') ? 'text/css' : p.endsWith('.js') ? 'application/javascript' : p.endsWith('.html') ? 'text/html' : 'application/octet-stream'; }
-function taskLevel(task, project) {
-  if (task.level) return Number(task.level);
-  if (!task.wbs || !project?.wbs) return 3;
-  const remainder = String(task.wbs).replace(String(project.wbs), '').replace(/^\./, '');
-  return remainder ? remainder.split('.').length + 1 : 1;
-}
-function nextTaskWbs(db, project, parentWbs) {
-  const parent = String(parentWbs || project.wbs);
-  const children = db.tasks.filter(t => t.projectId === project.id && String(t.wbs).startsWith(parent + '.') && String(t.wbs).split('.').length === parent.split('.').length + 1);
-  const nums = children.map(t => Number(String(t.wbs).split('.').pop())).filter(Number.isFinite);
-  return `${parent}.${(nums.length ? Math.max(...nums) : 0) + 1}`;
-}
-
-const server = http.createServer(async (req, res) => {
-  try {
-    const u = new URL(req.url, 'http://localhost');
-    const role = roleOf(req);
-
-    if (req.method === 'POST' && u.pathname === '/api/login') {
-      const b = await body(req);
-      if (!same(b.user, DEMO_USER.name) || !same(b.id, DEMO_USER.id) || !same(b.password, DEMO_USER.password)) return send(res, 401, { error: 'Invalid user, ID or password' });
-      const token = crypto.randomBytes(32).toString('hex');
-      sessions.set(token, { name: DEMO_USER.name, id: DEMO_USER.id, createdAt: Date.now() });
-      res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store', 'Set-Cookie': `ets_session=${token}; HttpOnly; SameSite=Lax; Path=/; Max-Age=28800` });
-      return res.end(JSON.stringify({ ok: true, user: DEMO_USER.name }));
-    }
-    if (req.method === 'POST' && u.pathname === '/api/logout') {
-      const token = cookies(req).ets_session;
-      if (token) sessions.delete(token);
-      res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store', 'Set-Cookie': 'ets_session=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0' });
-      return res.end(JSON.stringify({ ok: true }));
-    }
-    if (u.pathname.startsWith('/api/')) { const session = authRequired(req, res); if (!session) return; }
-
-    if (req.method === 'GET' && u.pathname === '/api/bootstrap') {
-      const db = read(), pmap = Object.fromEntries(db.projects.map(p => [p.id, p]));
-      return send(res, 200, {
-        role,
-        user: userOf(req),
-        userId: sessionOf(req)?.id,
-        users: db.users,
-        projects: db.projects.map(p => safeProject(p, role)),
-        tasks: db.tasks.map(t => ({ ...safeTask(t, role, pmap[t.projectId]), level: taskLevel(t, pmap[t.projectId]) })),
-        notifications: db.notifications,
-        audit: management(role) ? db.audit : [],
-        permissions: { management: management(role), canAssign: canAssign(role), canCreateCommercial: management(role), canAudit: management(role) }
-      });
-    }
-
-    if (req.method === 'PATCH' && u.pathname.startsWith('/api/tasks/')) {
-      const id = u.pathname.split('/').pop(), db = read(), t = db.tasks.find(x => x.id === id);
-      if (!t) return send(res, 404, { error: 'Task not found' });
-      const before = structuredClone(t), b = await body(req), allowed = ['status', 'mhActual', 'flag', 'flagReason', 'remarks', 'dependency'];
-      if (canAssign(role)) allowed.push('assignee', 'priority', 'mhEstimate', 'dueDate', 'department');
-      const changed = [];
-      for (const [k, v] of Object.entries(b)) {
-        if (allowed.includes(k) && String(t[k] ?? '') !== String(v ?? '')) { t[k] = v; changed.push(k); }
-      }
-      if (Number(t.mhActual) > Number(t.mhEstimate) && !t.flag) { t.flag = 'Needs review'; changed.push('flag'); }
-      if (changed.length) {
-        log(db, `Updated task ${t.wbs}: ${changed.join(', ')}`, req, { entityType: 'task', entityId: t.id, projectId: t.projectId, changes: changed.map(k => ({ field: k, from: before[k] ?? '', to: t[k] ?? '' })) });
-        if (b.assignee && before.assignee !== b.assignee) notify(db, `Task ${t.wbs} assigned to ${b.assignee}`);
-        write(db);
-      }
-      return send(res, 200, { ok: true, task: t });
-    }
-
-    if (req.method === 'POST' && u.pathname === '/api/projects') {
-      const db = read(), b = await body(req), type = b.type || 'internal_eer';
-      if (type === 'commercial' && !management(role)) return send(res, 403, { error: 'Only Senior Management can create Commercial projects' });
-      const id = 'p-' + Date.now();
-      const p = { id, wbs: type === 'internal_eer' ? `EER-${String(db.projects.filter(x => x.type === 'internal_eer').length + 1).padStart(3, '0')}` : `P-${Date.now().toString().slice(-5)}`, type, client: b.client || 'Internal', title: b.title || 'Untitled project', aircraft: b.aircraft || '', registration: '', releaseType: b.releaseType || '', sector: b.sector || '', owner: b.owner || userOf(req), priority: b.priority || 'Normal', stage: b.stage || 'RFQ', status: b.stage || 'RFQ', scope: b.scope || '', edd: b.edd || '', startDate: new Date().toISOString().slice(0, 10), pricing: management(role) ? { rom: b.rom || '', poStatus: '', negotiationNotes: '' } : {}, clientFocal: '', doaFocal: '', remarks: '' };
-      db.projects.unshift(p);
-      log(db, `Created ${type === 'commercial' ? 'Commercial project' : 'Internal EER'} ${p.wbs}`, req, { entityType: 'project', entityId: p.id, projectId: p.id });
-      if (type === 'internal_eer' && !management(role)) notify(db, `New Internal EER ${p.wbs} created by ${userOf(req)} — LTSE / Senior Management notified`);
-      write(db); return send(res, 200, { ok: true, project: safeProject(p, role) });
-    }
-
-    if (req.method === 'POST' && u.pathname === '/api/tasks') {
-      const db = read();
-      if (!canAssign(role)) return send(res, 403, { error: 'Only LTSE and above can assign/create tasks' });
-      const b = await body(req), p = db.projects.find(x => x.id === b.projectId);
-      if (!p) return send(res, 404, { error: 'Project not found' });
-      const parentWbs = b.parentWbs || p.wbs;
-      const wbs = nextTaskWbs(db, p, parentWbs);
-      const level = Math.max(2, wbs.split('.').length - String(p.wbs).split('.').length + 1);
-      const id = 't-' + Date.now();
-      const t = {
-        id, projectId: p.id, wbs, parentWbs, level,
-        title: b.title || 'New task',
-        department: b.department || 'Engineering',
-        assignee: b.assignee || 'Unassigned',
-        priority: b.priority || 'Normal',
-        status: b.status || (b.assignee ? 'Assigned' : 'To Do'),
-        mhEstimate: Number(b.mhEstimate || 0), mhActual: 0,
-        startDate: new Date().toISOString().slice(0, 10), dueDate: b.dueDate || '',
-        dependency: b.dependency || '', action: b.action || '', remarks: b.remarks || '', flag: '', flagReason: ''
-      };
-      db.tasks.push(t);
-      log(db, `Created task ${t.wbs} — ${t.title}`, req, { entityType: 'task', entityId: t.id, projectId: p.id, changes: [{ field: 'created', from: '', to: t.title }] });
-      if (t.assignee !== 'Unassigned') notify(db, `Task ${t.wbs} assigned to ${t.assignee}`);
-      write(db); return send(res, 200, { ok: true, task: t });
-    }
-
-    if (req.method === 'POST' && u.pathname === '/api/notifications/read') { const db = read(); db.notifications.forEach(n => n.read = true); write(db); return send(res, 200, { ok: true }); }
-    if (req.method === 'POST' && u.pathname === '/api/reset') { fs.copyFileSync(SEED, DB); return send(res, 200, { ok: true }); }
-    if (req.method === 'GET' && u.pathname === '/api/export.csv') {
-      const db = read(), pmap = Object.fromEntries(db.projects.map(p => [p.id, p])), esc = v => `"${String(v ?? '').replaceAll('"', '""')}"`, head = ['WBS', 'Project', 'Client', 'Type', 'Stage', 'Task', 'Assignee', 'Status', 'MH Estimate', 'MH Actual', 'Flag'];
-      const lines = [head.map(esc).join(',')];
-      for (const t of db.tasks) { const p = pmap[t.projectId], st = safeTask(t, role, p); lines.push([t.wbs, p?.title, p?.client, p?.type, p?.stage, t.title, t.assignee, t.status, st.mhEstimate ?? '', st.mhActual ?? '', t.flag].map(esc).join(',')); }
-      res.writeHead(200, { 'Content-Type': 'text/csv', 'Content-Disposition': 'attachment; filename="ets_project_export.csv"' }); return res.end(lines.join('\n'));
-    }
-
-    const file = u.pathname === '/' ? path.join(ROOT, 'public', 'index.html') : path.join(ROOT, 'public', u.pathname.replace(/^\//, ''));
-    if (!file.startsWith(path.join(ROOT, 'public'))) return send(res, 403, 'Forbidden', 'text/plain');
-    if (fs.existsSync(file) && fs.statSync(file).isFile()) { res.writeHead(200, { 'Content-Type': mime(file), 'Cache-Control': 'no-store' }); return fs.createReadStream(file).pipe(res); }
-    return send(res, 404, 'Not found', 'text/plain');
-  } catch (e) { console.error(e); send(res, 500, { error: 'Server error' }); }
-});
-
-server.listen(PORT, '0.0.0.0', () => console.log(`ETS IPM running on port ${PORT}`));
+const server=http.createServer(async(req,res)=>{try{const u=new URL(req.url,'http://localhost'),role=roleOf(req);
+if(req.method==='POST'&&u.pathname==='/api/login'){const b=await body(req);if(!same(String(b.user||'').trim(),DEMO_USER.name)||!same(String(b.id||'').trim(),DEMO_USER.id)||!same(String(b.password||''),DEMO_USER.password))return send(res,401,{error:'Invalid user, ID or password'});const token=crypto.randomBytes(32).toString('hex');sessions.set(token,{name:DEMO_USER.name,id:DEMO_USER.id,createdAt:Date.now()});return send(res,200,{ok:true,user:DEMO_USER.name},'application/json',{'Set-Cookie':`ets_session=${token}; HttpOnly; SameSite=Lax; Path=/; Max-Age=28800`})}
+if(req.method==='POST'&&u.pathname==='/api/logout'){const token=cookies(req).ets_session;if(token)sessions.delete(token);return send(res,200,{ok:true},'application/json',{'Set-Cookie':'ets_session=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0'})}
+if(u.pathname.startsWith('/api/')){if(!authRequired(req,res))return}
+if(req.method==='GET'&&u.pathname==='/api/bootstrap'){const db=read(),pmap=Object.fromEntries(db.projects.map(p=>[p.id,p]));const notifications=db.notifications.filter(n=>n.recipients?.includes('All')||n.recipients?.includes(userOf(req))||n.recipients?.includes(role));return send(res,200,{user:userOf(req),userId:sessionOf(req)?.id,role,users:db.users,projects:db.projects.map(p=>safeProject(p,role)),tasks:db.tasks.map(t=>({...safeTask(t,role,pmap[t.projectId]),level:taskLevel(t,pmap[t.projectId])})),comments:db.comments,escalations:isManagement(role)?db.escalations:db.escalations.map(e=>({id:e.id,taskId:e.taskId,type:e.type,ts:e.ts})),notifications,audit:isManagement(role)?db.audit:[],leave:db.leave,settings:db.settings,permissions:{management:isManagement(role),canAssign:canAssign(role),canCreateCommercial:isManagement(role),canAudit:isManagement(role),canManageTeam:isManagement(role),canConfigure:isManagement(role)}})}
+if(req.method==='POST'&&u.pathname==='/api/projects'){const db=read(),b=await body(req),type=b.type==='commercial'?'commercial':'internal_eer';if(type==='commercial'&&!isManagement(role))return send(res,403,{error:'Only Senior Management can create Commercial projects'});const commercialCount=db.projects.filter(p=>p.type==='commercial').length+1,eerCount=db.projects.filter(p=>p.type==='internal_eer').length+1;const p={id:id('p'),wbs:b.wbs||(type==='commercial'?String(commercialCount):`EER-${String(eerCount).padStart(3,'0')}`),type,client:b.client||(type==='internal_eer'?'Internal':''),title:b.title||'Untitled project',aircraft:b.aircraft||'',registration:b.registration||'',releaseType:b.releaseType||'',sector:b.sector||'',owner:b.owner||userOf(req),priority:b.priority||'Normal',stage:type==='commercial'?(b.stage||'RFQ'):(b.stage||'In Progress'),status:b.status||b.stage||(type==='commercial'?'RFQ':'In Progress'),scope:b.scope||'',edd:b.edd||'',startDate:b.startDate||new Date().toISOString().slice(0,10),requiredInputs:b.requiredInputs||'',deliverables:b.deliverables||'',clientFocal:b.clientFocal||'',doaFocal:b.doaFocal||'',projectManager:b.projectManager||'',site:b.site||'',sage:b.sage||'',nreStatus:b.nreStatus||'',remarks:b.remarks||'',pricing:type==='commercial'?{rom:b.rom||'',poStatus:b.poStatus||'',negotiationNotes:b.negotiationNotes||'',offerDetails:b.offerDetails||'',agreementDetails:b.agreementDetails||''}:undefined};db.projects.unshift(p);audit(db,req,`Created ${type==='commercial'?'Commercial project':'Internal EER'} ${p.wbs}`,{entityType:'project',entityId:p.id,projectId:p.id});if(type==='internal_eer'&&!isManagement(role))notify(db,`New Internal EER ${p.wbs} created by ${userOf(req)}`,['LTSE','Senior Management','Admin']);write(db);return send(res,201,{ok:true,project:safeProject(p,role)})}
+if(req.method==='PATCH'&&/^\/api\/projects\/[^/]+$/.test(u.pathname)){const pid=u.pathname.split('/').pop(),db=read(),p=projectById(db,pid);if(!p)return send(res,404,{error:'Project not found'});const b=await body(req),before=structuredClone(p),common=['client','title','aircraft','registration','releaseType','sector','owner','priority','stage','status','scope','edd','requiredInputs','deliverables','clientFocal','doaFocal','projectManager','site','sage','nreStatus','remarks'],allowed=isManagement(role)?common:common.filter(k=>k!=='stage');for(const k of allowed)if(Object.prototype.hasOwnProperty.call(b,k))p[k]=b[k];if(isManagement(role)&&p.type==='commercial'){p.pricing||={};for(const k of ['rom','poStatus','negotiationNotes','offerDetails','agreementDetails'])if(Object.prototype.hasOwnProperty.call(b,k))p.pricing[k]=b[k]}const changes=diff(before,p,common.concat(['pricing']));if(changes.length){audit(db,req,`Updated project ${p.wbs}: ${changes.map(c=>c.field).join(', ')}`,{entityType:'project',entityId:p.id,projectId:p.id,changes});write(db)}return send(res,200,{ok:true,project:safeProject(p,role)})}
+if(req.method==='DELETE'&&/^\/api\/projects\/[^/]+$/.test(u.pathname)){if(!isManagement(role))return send(res,403,{error:'Only Senior Management can delete projects'});const pid=u.pathname.split('/').pop(),db=read(),p=projectById(db,pid);if(!p)return send(res,404,{error:'Project not found'});const tids=db.tasks.filter(t=>t.projectId===pid).map(t=>t.id);db.projects=db.projects.filter(x=>x.id!==pid);db.tasks=db.tasks.filter(t=>t.projectId!==pid);db.comments=db.comments.filter(c=>!tids.includes(c.taskId));db.escalations=db.escalations.filter(e=>!tids.includes(e.taskId));audit(db,req,`Deleted project ${p.wbs} and ${tids.length} tasks`,{entityType:'project',entityId:pid,projectId:pid});write(db);return send(res,200,{ok:true})}
+if(req.method==='POST'&&u.pathname==='/api/work-packages'){if(!canAssign(role))return send(res,403,{error:'Only LTSE and above can create work packages'});const db=read(),b=await body(req),p=projectById(db,b.projectId);if(!p)return send(res,404,{error:'Project not found'});const wbs=nextWbs(db,p,p.wbs),t={id:id('wp'),projectId:p.id,wbs,parentWbs:p.wbs,level:2,title:b.title||b.department||'Work package',department:b.department||b.title||'Engineering',assignee:b.assignee||'Unassigned',priority:b.priority||'Normal',status:b.status||'In Progress',mhEstimate:Number(b.mhEstimate||0),mhActual:Number(b.mhActual||0),startDate:b.startDate||new Date().toISOString().slice(0,10),dueDate:b.dueDate||'',dependency:'',action:b.action||'',remarks:b.remarks||'',flag:'',flagReason:''};db.tasks.push(t);audit(db,req,`Created Level 2 work package ${wbs} — ${t.title}`,{entityType:'task',entityId:t.id,projectId:p.id});write(db);return send(res,201,{ok:true,task:t})}
+if(req.method==='POST'&&u.pathname==='/api/tasks'){if(!canAssign(role))return send(res,403,{error:'Only LTSE and above can create/assign tasks'});const db=read(),b=await body(req),p=projectById(db,b.projectId);if(!p)return send(res,404,{error:'Project not found'});const parentWbs=b.parentWbs||p.wbs,wbs=nextWbs(db,p,parentWbs),t={id:id('t'),projectId:p.id,wbs,parentWbs,level:String(parentWbs).split('.').length===String(p.wbs).split('.').length?2:3,title:b.title||'New task',department:b.department||'Engineering',assignee:b.assignee||'Unassigned',priority:b.priority||'Normal',status:b.status||(b.assignee?'Assigned':'To Do'),mhEstimate:Number(b.mhEstimate||0),mhActual:Number(b.mhActual||0),startDate:b.startDate||new Date().toISOString().slice(0,10),dueDate:b.dueDate||'',dependency:b.dependency||'',action:b.action||'',remarks:b.remarks||'',flag:b.flag||'',flagReason:b.flagReason||''};if(t.mhActual>t.mhEstimate&&(!['Escalation','Bottleneck'].includes(t.flag)||!t.flagReason.trim()))return send(res,422,{error:'Actual MH exceeds estimate. Select Escalation or Bottleneck and enter a reason.'});db.tasks.push(t);audit(db,req,`Created task ${wbs} — ${t.title}`,{entityType:'task',entityId:t.id,projectId:p.id});if(t.assignee!=='Unassigned')notify(db,`Task ${wbs} assigned to ${t.assignee}`,[t.assignee]);write(db);return send(res,201,{ok:true,task:t})}
+if(req.method==='PATCH'&&/^\/api\/tasks\/[^/]+$/.test(u.pathname)){const tid=u.pathname.split('/').pop(),db=read(),t=db.tasks.find(x=>x.id===tid);if(!t)return send(res,404,{error:'Task not found'});const p=projectById(db,t.projectId),b=await body(req),before=structuredClone(t),executable=['status','mhActual','remarks','flag','flagReason','dependency'],assignable=['assignee','priority','mhEstimate','dueDate','department','startDate','action','title'],allowed=canAssign(role)?executable.concat(assignable):executable,candidate={...t};for(const k of allowed)if(Object.prototype.hasOwnProperty.call(b,k))candidate[k]=['mhActual','mhEstimate'].includes(k)?Number(b[k]||0):b[k];if(Number(candidate.mhActual)>Number(candidate.mhEstimate)&&(!['Escalation','Bottleneck'].includes(candidate.flag)||!String(candidate.flagReason||'').trim()))return send(res,422,{error:'Actual MH exceeds estimate. Select Escalation or Bottleneck and enter a reason.'});Object.assign(t,candidate);const changes=diff(before,t,allowed);if(changes.length){audit(db,req,`Updated task ${t.wbs}: ${changes.map(c=>c.field).join(', ')}`,{entityType:'task',entityId:t.id,projectId:t.projectId,changes});if(before.assignee!==t.assignee&&t.assignee)notify(db,`Task ${t.wbs} assigned to ${t.assignee}`,[t.assignee]);if(before.flag!==t.flag||before.flagReason!==t.flagReason){db.escalations.unshift({id:id('e'),taskId:t.id,projectId:t.projectId,type:t.flag,reason:t.flagReason,user:userOf(req),ts:now()});if(t.flag)notify(db,`${t.flag} flagged on ${t.wbs}`,['Senior Management','Admin'])}write(db)}return send(res,200,{ok:true,task:safeTask(t,role,p)})}
+if(req.method==='DELETE'&&/^\/api\/tasks\/[^/]+$/.test(u.pathname)){if(!canAssign(role))return send(res,403,{error:'Only LTSE and above can delete tasks'});const tid=u.pathname.split('/').pop(),db=read(),t=db.tasks.find(x=>x.id===tid);if(!t)return send(res,404,{error:'Task not found'});db.tasks=db.tasks.filter(x=>x.id!==tid);db.comments=db.comments.filter(c=>c.taskId!==tid);db.escalations=db.escalations.filter(e=>e.taskId!==tid);audit(db,req,`Deleted task ${t.wbs} — ${t.title}`,{entityType:'task',entityId:tid,projectId:t.projectId});write(db);return send(res,200,{ok:true})}
+if(req.method==='POST'&&/^\/api\/tasks\/[^/]+\/comments$/.test(u.pathname)){const tid=u.pathname.split('/')[3],db=read(),t=db.tasks.find(x=>x.id===tid);if(!t)return send(res,404,{error:'Task not found'});const b=await body(req);if(!String(b.text||'').trim())return send(res,400,{error:'Comment is required'});const c={id:id('c'),taskId:tid,projectId:t.projectId,text:String(b.text).trim(),user:userOf(req),ts:now()};db.comments.unshift(c);audit(db,req,`Commented on task ${t.wbs}`,{entityType:'comment',entityId:c.id,projectId:t.projectId});write(db);return send(res,201,{ok:true,comment:c})}
+if(req.method==='POST'&&u.pathname==='/api/leave'){if(!canAssign(role))return send(res,403,{error:'Only LTSE and above can manage leave/availability'});const db=read(),b=await body(req);if(!b.user||!b.date)return send(res,400,{error:'User and date are required'});const l={id:id('l'),user:b.user,date:b.date,type:b.type||'Leave',note:b.note||''};db.leave.push(l);audit(db,req,`Marked ${l.type} for ${l.user} on ${l.date}`,{entityType:'leave',entityId:l.id});write(db);return send(res,201,{ok:true,leave:l})}
+if(req.method==='DELETE'&&/^\/api\/leave\/[^/]+$/.test(u.pathname)){if(!canAssign(role))return send(res,403,{error:'Not permitted'});const lid=u.pathname.split('/').pop(),db=read(),l=db.leave.find(x=>x.id===lid);db.leave=db.leave.filter(x=>x.id!==lid);if(l)audit(db,req,`Removed ${l.type} for ${l.user} on ${l.date}`,{entityType:'leave',entityId:lid});write(db);return send(res,200,{ok:true})}
+if(req.method==='POST'&&u.pathname==='/api/users'){if(!isManagement(role))return send(res,403,{error:'Only Senior Management can manage team roster'});const db=read(),b=await body(req);if(!b.name)return send(res,400,{error:'Name is required'});const user={id:id('u'),name:b.name,role:b.role||'TSE/JTSE',position:b.position||'',capacity:Number(b.capacity||8)};db.users.push(user);audit(db,req,`Added ${user.name} to team roster`,{entityType:'user',entityId:user.id});write(db);return send(res,201,{ok:true,user})}
+if(req.method==='PATCH'&&/^\/api\/users\/[^/]+$/.test(u.pathname)){if(!isManagement(role))return send(res,403,{error:'Only Senior Management can manage team roster'});const uid=u.pathname.split('/').pop(),db=read(),usr=db.users.find(x=>x.id===uid||x.name===decodeURIComponent(uid));if(!usr)return send(res,404,{error:'User not found'});const before=structuredClone(usr),b=await body(req);for(const k of ['name','role','position','capacity'])if(Object.prototype.hasOwnProperty.call(b,k))usr[k]=k==='capacity'?Number(b[k]||8):b[k];const changes=diff(before,usr,['name','role','position','capacity']);if(changes.length){audit(db,req,`Updated team member ${before.name}`,{entityType:'user',entityId:usr.id||usr.name,changes});write(db)}return send(res,200,{ok:true,user:usr})}
+if(req.method==='DELETE'&&/^\/api\/users\/[^/]+$/.test(u.pathname)){if(!isManagement(role))return send(res,403,{error:'Only Senior Management can manage team roster'});const uid=decodeURIComponent(u.pathname.split('/').pop()),db=read(),usr=db.users.find(x=>x.id===uid||x.name===uid);if(!usr)return send(res,404,{error:'User not found'});db.users=db.users.filter(x=>x!==usr);audit(db,req,`Removed ${usr.name} from team roster`,{entityType:'user',entityId:usr.id||usr.name});write(db);return send(res,200,{ok:true})}
+if(req.method==='PATCH'&&u.pathname==='/api/settings'){if(!isManagement(role))return send(res,403,{error:'Only Senior Management can change settings'});const db=read(),b=await body(req),before=structuredClone(db.settings);db.settings={...db.settings,...b};const changes=diff(before,db.settings,Object.keys(b));if(changes.length){audit(db,req,'Updated field/system settings',{entityType:'settings',changes});write(db)}return send(res,200,{ok:true,settings:db.settings})}
+if(req.method==='POST'&&u.pathname==='/api/notifications/read'){const db=read(),b=await body(req),ids=b.ids||db.notifications.map(n=>n.id);db.notifications.forEach(n=>{n.readBy||=[];if(ids.includes(n.id)&&!n.readBy.includes(userOf(req)))n.readBy.push(userOf(req))});write(db);return send(res,200,{ok:true})}
+if(req.method==='POST'&&u.pathname==='/api/import'){if(!isManagement(role))return send(res,403,{error:'Only Senior Management can import data'});const db=read(),b=await body(req),rows=Array.isArray(b.rows)?b.rows:[];if(!rows.length)return send(res,400,{error:'No rows supplied'});const projectMap={};let addedP=0,addedT=0;for(const r of rows){const wbs=String(r.WBS||r.wbs||'').trim();if(!wbs)continue;const level=Number(r.Level||r.level||wbs.split('.').length);if(level===1){const p={id:id('p'),wbs,type:String(r['Card Type']||r.type||'Commercial').toLowerCase().includes('internal')?'internal_eer':'commercial',client:r.CLIENT||r.Client||'',title:r.Project||r.title||`Project ${wbs}`,aircraft:r.Aircraft||'',registration:r['A/C Reg']||'',releaseType:r['DOA Scope']||'',sector:r['ETS Sub-Dept']||'',owner:r.Owner||'',priority:r.Priority||'Normal',stage:r.Stage||r.Status||'RFQ',status:r.Status||r.Stage||'RFQ',scope:r.Details||'',edd:r.EDD||r['Completion Date']||'',startDate:r['Start Date']||'',clientFocal:r['Client Focal']||'',doaFocal:r['DOA focal']||'',remarks:r.Remarks||'',pricing:{rom:r.ROM||'',poStatus:r['PO Status']||'',negotiationNotes:''}};db.projects.push(p);projectMap[wbs]=p;addedP++}}for(const r of rows){const wbs=String(r.WBS||r.wbs||'').trim();if(!wbs)continue;const level=Number(r.Level||r.level||wbs.split('.').length);if(level<=1)continue;const root=wbs.split('.')[0],p=projectMap[root]||db.projects.find(x=>String(x.wbs)===root);if(!p)continue;const t={id:id(level===2?'wp':'t'),projectId:p.id,wbs,parentWbs:wbs.split('.').slice(0,-1).join('.'),level,title:r.Details||r.Project||r['Sub Dept']||r['ETS Sub-Dept']||`Task ${wbs}`,department:r['ETS Sub-Dept']||r['Sub Dept']||'',assignee:r.Owner||'Unassigned',priority:r.Priority||'Normal',status:r.Status||'To Do',mhEstimate:Number(r['MH Estimations']||r.mhEstimate||0),mhActual:Number(r['Actual MH']||r.mhActual||0),startDate:r['Start Date']||'',dueDate:r['Completion Date']||r.EDD||'',dependency:r.Dependency||'',action:r['Action Items']||'',remarks:r.Remarks||'',flag:r['Escalation Flag']||'',flagReason:''};db.tasks.push(t);addedT++}audit(db,req,`Imported ${addedP} projects and ${addedT} tasks`,{entityType:'import'});write(db);return send(res,200,{ok:true,projects:addedP,tasks:addedT})}
+if(req.method==='GET'&&u.pathname==='/api/export.csv'){const db=read(),head=['WBS','Level','Card Type','Client','Aircraft','Project','Details','Department','Owner','Priority','Status','Stage','Client Focal','DOA focal','MH Estimations','Actual MH','Dependency','Escalation Flag','Escalation Reason','ROM','PO Status','Action Items','Remarks','Start Date','Completion Date'],lines=[head.map(csvEscape).join(',')];for(const p of db.projects){const sp=safeProject(p,role);lines.push([p.wbs,1,p.type==='commercial'?'Commercial':'Internal (EER)',p.client,p.aircraft,p.title,'','',p.owner,p.priority,p.status,p.stage,p.clientFocal,p.doaFocal,'','','','','',sp.pricing?.rom||'',sp.pricing?.poStatus||'','',p.remarks,p.startDate,p.edd].map(csvEscape).join(','));for(const t of db.tasks.filter(t=>t.projectId===p.id)){const st=safeTask(t,role,p);lines.push([t.wbs,taskLevel(t,p),'',p.client,p.aircraft,'',t.title,st.department||'',t.assignee,t.priority,t.status,p.stage,p.clientFocal,p.doaFocal,st.mhEstimate??'',st.mhActual??'',st.dependency??'',t.flag,isManagement(role)?t.flagReason:'',sp.pricing?.rom||'',sp.pricing?.poStatus||'',st.action||'',st.remarks||'',t.startDate,t.dueDate].map(csvEscape).join(','))}}return send(res,200,lines.join('\n'),'text/csv',{'Content-Disposition':'attachment; filename="ETS_Work_Tracker_export.csv"'})}
+if(req.method==='GET'&&u.pathname==='/api/reports/workload.csv'){if(!isManagement(role))return send(res,403,{error:'Management only'});const db=read(),counts={};db.tasks.filter(t=>Number(t.level||3)>=3).forEach(t=>counts[t.status]=(counts[t.status]||0)+1);return send(res,200,['Status,Count',...Object.entries(counts).map(([s,c])=>`${csvEscape(s)},${c}`)].join('\n'),'text/csv',{'Content-Disposition':'attachment; filename="workload_report.csv"'})}
+if(req.method==='GET'&&u.pathname==='/api/reports/escalations.csv'){if(!isManagement(role))return send(res,403,{error:'Management only'});const db=read(),lines=[['Timestamp','Task','Type','User','Reason'].map(csvEscape).join(',')];for(const e of db.escalations){const t=db.tasks.find(x=>x.id===e.taskId);lines.push([e.ts,t?.wbs||e.taskId,e.type,e.user,e.reason].map(csvEscape).join(','))}return send(res,200,lines.join('\n'),'text/csv',{'Content-Disposition':'attachment; filename="escalation_report.csv"'})}
+if(req.method==='GET'&&u.pathname==='/api/reports/mh.csv'){if(!isManagement(role))return send(res,403,{error:'Management only'});const db=read(),lines=[['WBS','Task','Estimate','Actual','Variance'].map(csvEscape).join(',')];for(const t of db.tasks.filter(t=>Number(t.level||3)>=3))lines.push([t.wbs,t.title,t.mhEstimate,t.mhActual,Number(t.mhActual||0)-Number(t.mhEstimate||0)].map(csvEscape).join(','));return send(res,200,lines.join('\n'),'text/csv',{'Content-Disposition':'attachment; filename="mh_variance_report.csv"'})}
+if(req.method==='GET'&&u.pathname==='/api/capacity'){const db=read(),days=Number(u.searchParams.get('days')||14),start=u.searchParams.get('start')||new Date().toISOString().slice(0,10),startDate=new Date(`${start}T00:00:00`),std=Number(db.settings.standardHoursPerDay||8),out=[];for(const usr of db.users){const dayMap={};db.tasks.filter(t=>t.assignee===usr.name&&t.status!=='Completed').forEach(t=>{const m=spreadHours(t.startDate,t.mhEstimate,std);for(const[d,h]of Object.entries(m))dayMap[d]=(dayMap[d]||0)+h});const cells=[];for(let i=0;i<days;i++){const d=new Date(startDate);d.setDate(d.getDate()+i);const key=d.toISOString().slice(0,10),leave=db.leave.find(l=>l.user===usr.name&&l.date===key);cells.push({date:key,booked:dayMap[key]||0,capacity:Number(usr.capacity||std),leave:leave||null})}out.push({user:usr.name,role:usr.role,position:usr.position||'',days:cells})}return send(res,200,{start,days:out})}
+if(req.method==='POST'&&u.pathname==='/api/reset'){if(!isManagement(role))return send(res,403,{error:'Management only'});fs.copyFileSync(SEED,DB);return send(res,200,{ok:true})}
+const file=u.pathname==='/'?path.join(ROOT,'public','index.html'):path.join(ROOT,'public',u.pathname.replace(/^\//,''));if(!file.startsWith(path.join(ROOT,'public')))return send(res,403,'Forbidden','text/plain');if(fs.existsSync(file)&&fs.statSync(file).isFile()){res.writeHead(200,{'Content-Type':mime(file),'Cache-Control':'no-store'});return fs.createReadStream(file).pipe(res)}return send(res,404,'Not found','text/plain')
+}catch(e){console.error(e);return send(res,500,{error:e.message||'Server error'})}});
+server.listen(PORT,'0.0.0.0',()=>console.log(`ETS IPM running on port ${PORT}`));
