@@ -1,0 +1,40 @@
+name: ETS IPM QA
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  qa:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: JavaScript syntax checks
+        run: |
+          node --check server.js
+          node --check public/app.js
+          node --check public/admin.js
+          node --check public/tracker-parity.js
+          node --check public/architecture.js
+      - name: Start application
+        run: |
+          node server.js > /tmp/ets-ipm.log 2>&1 &
+          echo $! > /tmp/ets-ipm.pid
+          sleep 2
+          curl --fail http://127.0.0.1:5174/ > /tmp/index.html
+          grep -q "ETS Integrated Project Management" /tmp/index.html
+      - name: Authentication smoke test
+        run: |
+          curl --fail -c /tmp/cookies.txt -H 'Content-Type: application/json' -d '{"user":"Stephan","id":"123","password":"Testing"}' http://127.0.0.1:5174/api/login
+          curl --fail -b /tmp/cookies.txt http://127.0.0.1:5174/api/bootstrap > /tmp/bootstrap.json
+          node -e "const d=require('/tmp/bootstrap.json'); if(d.user!=='Stephan'||d.profile!=='System Administrator') process.exit(1); console.log('Authenticated bootstrap OK')"
+      - name: Stop application
+        if: always()
+        run: |
+          test -f /tmp/ets-ipm.pid && kill $(cat /tmp/ets-ipm.pid) || true
+          cat /tmp/ets-ipm.log || true
