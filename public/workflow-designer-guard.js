@@ -7,10 +7,7 @@
   };
   window.render = render;
 
-  // Designer interactions are self-contained. Prevent unrelated delegated shell clicks
-  // from treating designer controls as normal workspace navigation.
-  document.addEventListener('click', e => {
-    const shell = e.target.closest?.('.designer-shell');
-    if(shell) e.stopPropagation();
-  }, true);
+  // Do NOT stop propagation during capture: that prevents the designer's own
+  // button/node handlers from receiving clicks. Designer controls already stop
+  // propagation where shell isolation is required.
 })();
