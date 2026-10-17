@@ -7,6 +7,11 @@
     "dev": "node server.js",
     "start": "node server.js",
     "test:api": "node --test tests/*.test.cjs",
-    "qa:react": "npm --prefix react run build && npm --prefix react run lint && npm run test:api"
+    "qa:react": "npm --prefix react run build && npm --prefix react run lint && npm run test:api",
+    "test:e2e": "playwright test",
+    "qa:full": "npm run qa:react && npm run test:e2e"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.56.1"
   }
 }
