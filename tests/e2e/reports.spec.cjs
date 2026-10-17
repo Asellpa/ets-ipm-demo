@@ -9,5 +9,7 @@ test('administrator can filter reports and export results',async({page})=>{
  await expect(page.getByRole('heading',{name:'Reports and filters'})).toBeVisible();
  await expect(page.getByLabel('Task status')).toBeVisible();
  await expect(page.getByRole('button',{name:'Export filtered CSV'})).toBeVisible();
- await page.getByLabel('Task status').selectOption('Completed');
+ const statusFilter=page.getByRole('combobox',{name:'Task status'});
+ await expect(statusFilter).toBeVisible({timeout:5000});
+ await statusFilter.selectOption('Completed',{timeout:5000});
 });
