@@ -1,16 +1,21 @@
-name: React and API QA
+name: React, API and Browser QA
 on:
   push:
     branches: [react-migration, staging, main]
   pull_request:
+permissions:
+  contents: read
 jobs:
   validate:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
+      - name: Install QA dependencies
+        run: npm install
       - name: Install React dependencies
         run: npm install --prefix react
       - name: TypeScript and production build
@@ -19,3 +24,17 @@ jobs:
         run: npm --prefix react run lint
       - name: Isolated API smoke tests
         run: npm run test:api
+      - name: Install Chromium for Playwright
+        run: npx playwright install --with-deps chromium
+      - name: Isolated browser tests
+        run: npm run test:e2e
+      - name: Upload Playwright evidence on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-failure-evidence
+          path: |
+            playwright-report/
+            test-results/
+          if-no-files-found: ignore
+          retention-days: 7
