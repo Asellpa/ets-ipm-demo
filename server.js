@@ -354,6 +354,11 @@ const server = http.createServer(async(req,res)=>{ try{
     else{const counts={};db.tasks.filter(t=>Number(t.level||3)>=3).forEach(t=>counts[t.status]=(counts[t.status]||0)+1);lines=['Status,Count',...Object.entries(counts).map(([s,c])=>`${csv(s)},${c}`)];}
     return send(res,200,lines.join('\n'),'text/csv');
   }
+  if(req.method==='POST'&&u.pathname==='/api/demo/clear-records'){
+    if(!ps.manageSettings)return send(res,403,{error:'Manage Settings permission required'});
+    for(const key of ['projects','tasks','notifications','audit','comments','escalations','leave'])db[key]=[];
+    write(db);return send(res,200,{ok:true,cleared:true});
+  }
   if(req.method==='POST'&&u.pathname==='/api/reset'){
     if(!ps.manageSettings)return send(res,403,{error:'Manage Settings permission required'}); fs.copyFileSync(SEED,DB); return send(res,200,{ok:true});
   }
