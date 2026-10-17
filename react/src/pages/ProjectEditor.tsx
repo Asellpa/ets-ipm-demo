@@ -1,7 +1,7 @@
 import {useState,type FormEvent} from 'react';
 import {request,type Project} from '../api';
 
-type Field={key:keyof Project;label:string;kind?:'date'|'textarea'};
+type Field={key:string;label:string;kind?:'date'|'textarea'};
 const fields:Field[]=[
  {key:'client',label:'Client / department'},
  {key:'owner',label:'Project owner'},
