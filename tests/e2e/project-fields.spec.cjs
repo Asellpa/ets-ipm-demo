@@ -1,0 +1,26 @@
+const {test,expect}=require('@playwright/test');
+test('internal project detail fields survive save and reload',async({page})=>{
+ await page.goto('/');
+ await page.getByLabel('Username').fill('Stephan');
+ await page.getByLabel('User ID').fill('123');
+ await page.getByLabel('Password').fill('Testing');
+ await page.getByRole('button',{name:'Sign in'}).click();
+ await page.getByRole('button',{name:'Project Register'}).click();
+ await page.getByRole('button',{name:'+ New project'}).click();
+ await page.getByLabel('Project type').selectOption('internal_eer');
+ await page.getByLabel('Project title').fill('QA Detailed Internal EER');
+ await page.getByLabel('Aircraft',{exact:true}).fill('A320');
+ await page.getByLabel('Registration').fill('QA-001');
+ await page.getByLabel('Scope').fill('QA design and certification');
+ await page.getByLabel('Deliverables').fill('QA acceptance package');
+ await page.getByRole('button',{name:'Save project'}).click();
+ await expect(page.getByText('QA Detailed Internal EER')).toBeVisible();
+ await page.reload();
+ await page.getByRole('button',{name:'Project Register'}).click();
+ const row=page.getByRole('row').filter({hasText:'QA Detailed Internal EER'});
+ await row.getByRole('button',{name:'Edit'}).click();
+ await expect(page.getByLabel('Aircraft',{exact:true})).toHaveValue('A320');
+ await expect(page.getByLabel('Registration')).toHaveValue('QA-001');
+ await expect(page.getByLabel('Scope')).toHaveValue('QA design and certification');
+ await expect(page.getByLabel('Deliverables')).toHaveValue('QA acceptance package');
+});
