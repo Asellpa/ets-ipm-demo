@@ -5,6 +5,16 @@ test('administrator can filter reports and export results',async({page})=>{
  await page.getByLabel('User ID').fill('123');
  await page.getByLabel('Password').fill('Testing');
  await page.getByRole('button',{name:'Sign in'}).click();
+ await page.getByRole('button',{name:'Project Register'}).click();
+ await page.getByRole('button',{name:'+ New project'}).click();
+ await page.getByLabel('Project type').selectOption('internal_eer');
+ await page.getByLabel('Project title').fill('QA Completed Report Project');
+ await page.getByRole('button',{name:'Save project'}).click();
+ await page.getByRole('button',{name:'Tasks & Work Packages'}).click();
+ await page.getByRole('button',{name:'+ New task'}).click();
+ await page.getByLabel('Title').fill('QA Completed Report Task');
+ await page.getByLabel('Status').selectOption('Completed');
+ await page.getByRole('button',{name:'Save task'}).click();
  await page.getByRole('button',{name:'Reports'}).click();
  await expect(page.getByRole('heading',{name:'Reports and filters'})).toBeVisible();
  await expect(page.getByLabel('Task status')).toBeVisible();
@@ -12,4 +22,5 @@ test('administrator can filter reports and export results',async({page})=>{
  const statusFilter=page.getByRole('combobox',{name:'Task status'});
  await expect(statusFilter).toBeVisible({timeout:5000});
  await statusFilter.selectOption('Completed',{timeout:5000});
+ await expect(page.getByRole('table').getByText('QA Completed Report Task')).toBeVisible();
 });
