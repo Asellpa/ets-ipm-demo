@@ -6,7 +6,7 @@ const { URL } = require('url');
 
 const PORT = process.env.PORT || 5174;
 const ROOT = __dirname;
-const DATA = path.join(ROOT, 'data');
+const DATA = process.env.ETS_DATA_DIR ? path.resolve(process.env.ETS_DATA_DIR) : path.join(ROOT, 'data');
 const DB = path.join(DATA, 'db.json');
 const SEED = path.join(DATA, 'seed.json');
 const sessions = new Map();
