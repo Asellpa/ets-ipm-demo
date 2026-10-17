@@ -1,4 +1,4 @@
-export type Session = {user:string;profile:string;permissions:Record<string,boolean>;projects:Project[];tasks:Task[];notifications:unknown[];audit:unknown[];users:User[]};
+export type Session = {user:string;profile:string;permissions:Record<string,boolean>;projects:Project[];tasks:Task[];notifications:unknown[];audit:unknown[];settings:Record<string,unknown>;users:User[]};
 export type Project = {id:string;wbs?:string;title:string;type:string;client?:string;owner?:string;stage?:string};
 export type Task = {id:string;wbs?:string;title:string;assignee?:string;status?:string;projectId:string;level?:number;mhEstimate?:number;mhActual?:number};
 export type User = {id:string;name:string;username?:string;userId?:string;profileId?:string;active?:boolean;position?:string;email?:string;capacity?:number};
