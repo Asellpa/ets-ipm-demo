@@ -25,12 +25,14 @@ Open http://localhost:5175. The Vite dev server proxies /api to the existing Nod
 - Project Register with Commercial / Internal EER tabs and search (read-only)
 - My Work task list (read-only)
 - Manage Users active/offboarded tabs and account reactivation
+- Read-only Team, Resource Planning, Reports and Audit screens
+- ESLint and Prettier configurations (not yet executed)
 
 ## Not yet migrated
-Project and task creation/editing, resource planning, reports, audit, role editor, workflow designer, object/project configuration, import/export and other admin actions. These screens explicitly show a migration placeholder in React. Do **not** use this branch for the client demo yet.
+Project and task creation/editing, resource planning editing, report exports, audit filtering, role editor, workflow designer, object/project configuration, import/export and other admin actions. These screens explicitly show a migration placeholder in React. Do **not** use this branch for the client demo yet.
 
 ## Validation required
-- Run `npm run build` in react and address TypeScript errors.
+- Run `npm run build` and `npm run lint` in react and address errors. The GitHub connector cannot execute these commands; no successful build has been verified.
 - Exercise login/logout/refresh, role access, both user tabs and reactivation.
 - Verify the existing app continues to work on port 5174.
 - Migrate remaining modules in functional slices and run end-to-end tests before switching the production entry point.
