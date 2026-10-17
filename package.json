@@ -3,5 +3,10 @@
   "version": "2.0.0",
   "private": true,
   "description": "ETS departmental project, task, capacity and reporting application",
-  "scripts": {"dev": "node server.js", "start": "node server.js"}
+  "scripts": {
+    "dev": "node server.js",
+    "start": "node server.js",
+    "test:api": "node --test tests/*.test.cjs",
+    "qa:react": "npm --prefix react run build && npm --prefix react run lint && npm run test:api"
+  }
 }
