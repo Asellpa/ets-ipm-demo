@@ -8,13 +8,13 @@ Source of truth: `Department_Task_Tracker_FRD.pdf`, sections 1–9. This is a **
 | 3A. Commercial vs Internal EER cards | React create/edit and API project types | PARTIAL | Validate type-specific fields and LTSE/Senior notifications |
 | 3. RFQ project fields, handover, pricing | React editor only exposes basic fields | MISSING | Complete fields, handover stages and commercial editor |
 | 4. Task assignment and in-app notification | API supports assignment; React task editor basic | PARTIAL | Assignment notification, status updates, shared dashboards |
-| 5. Dependency, escalation/bottleneck, reason drilldown | API validates MH overrun and logs; React lacks flag editor/drilldown | PARTIAL | Flag+reason, private detail drilldown, audit |
+| 5. Dependency, escalation/bottleneck, reason drilldown | API validates MH overrun and logs; React now has flag/reason editor but no drilldown | PARTIAL | Flag+reason, private detail drilldown, audit |
 | 6A. Common dashboard and escalation indicators | Basic overview counts | PARTIAL | Active projects, flagged tasks, no pricing, detail access |
 | 6A. Daily capacity, bookings, leave | React shows aggregate workload only | MISSING | Day-by-day capacity and leave |
 | 6B. Individual dashboard | React My Work filters assigned tasks | PARTIAL | Progress %, deadlines, editable task status, live sync |
 | 6C. Management dashboard | Management metrics basic | PARTIAL | Pricing, drilldown and profitability |
-| 7. Filterable reports and export | API CSV endpoints; React has basic stats | PARTIAL | Export buttons, report filters and permissions |
-| 8. Notifications | Backend notification records | MISSING in React | In-app notification center, unread/read |
+| 7. Filterable reports and export | API CSV endpoints; React has basic stats and tracker CSV link | PARTIAL | Export buttons, report filters and permissions |
+| 8. Notifications | Backend notification records; React has notification center/read tracking | PARTIAL in React | In-app notification center, unread/read |
 | 8. Audit history | API audit records; React timestamp/activity mapping corrected | PARTIAL | Verify all field changes, assignments, escalations, filters |
 | 9. Commercial data inaccessible to LTSE and below | Backend masking intended | UNVERIFIED | Unauthorized HTTP response assertions |
 | 9. One source of truth | React consumes Node API | IMPLEMENTED architecturally | Confirm updates reflected in both views |
