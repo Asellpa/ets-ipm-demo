@@ -27,7 +27,7 @@ test('login, create internal project, create task, and verify persistence',async
 test('role management loads server permissions and settings screen opens',async({page})=>{
  await login(page);
  await page.getByRole('button',{name:'Role Management'}).click();
- await expect(page.getByRole('heading',{name:'Role Management'})).toBeVisible();
+ await expect(page.getByRole('heading',{name:'Role Management',level:1})).toBeVisible();
  await expect(page.getByText('Permissions',{exact:true})).toBeVisible();
  await page.getByRole('button',{name:'Project Configuration'}).click();
  await expect(page.getByRole('heading',{name:'System settings'})).toBeVisible();
