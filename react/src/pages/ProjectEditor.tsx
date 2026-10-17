@@ -31,12 +31,12 @@ const pricingFields=[
  {key:'offerDetails',label:'Offer details'},
  {key:'agreementDetails',label:'Agreement details'}
 ] as const;
-export default function ProjectEditor({project,canCommercial,canEer,canViewCommercialFields,onSaved,onCancel}:{project?:Project;canCommercial:boolean;canEer:boolean;canViewCommercialFields:boolean;onSaved:()=>Promise<void>;onCancel:()=>void}){
+export default function ProjectEditor({project,canCommercial,canEer,canViewCommercialFields,onSaved,onCancel}:{project?:Project;canCommercial:boolean;canEer:boolean;canViewCommercialFields?:boolean;onSaved:()=>Promise<void>;onCancel:()=>void}){
  const[type,setType]=useState(project?.type||(canCommercial?'commercial':'internal_eer'));
  const[values,setValues]=useState<Record<string,string>>(()=>{
   const initial:Record<string,string>={title:project?.title||'',stage:project?.stage||''};
-  for(const field of fields)initial[field.key]=String(project?.[field.key]??'');
-  for(const field of pricingFields)initial[field.key]=String(project?.pricing?.[field.key]??'');
+  for(const field of fields)initial[field.key]=String((project as unknown as Record<string,unknown>|undefined)?.[field.key]??'');
+  for(const field of pricingFields)initial[field.key]=String((project as unknown as {pricing?:Record<string,string>}|undefined)?.pricing?.[field.key]??'');
   return initial;
  });
  const[error,setError]=useState('');const[busy,setBusy]=useState(false);
