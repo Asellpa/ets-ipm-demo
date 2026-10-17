@@ -126,6 +126,35 @@ const server = http.createServer(async(req,res)=>{ try{
   if(u.pathname.startsWith('/api/')){ A=requireAuth(req,res); if(!A)return; }
   const db=A?.db, user=A?.user, ps=A?.permissions||{};
 
+  // Shared workflow configuration; server validates references and requires administrator access to edit.
+  if(u.pathname==='/api/workflow-config'){
+    if(req.method==='GET'){
+      if(!ps.manageSettings)return send(res,403,{error:'Manage Settings permission required'});
+      return send(res,200,{config:db.workflowConfig||null});
+    }
+    if(req.method==='PUT'){
+      if(!ps.manageSettings)return send(res,403,{error:'Manage Settings permission required'});
+      const payload=await body(req),cfg=payload.config;
+      if(!cfg||!Array.isArray(cfg.workflows)||!Array.isArray(cfg.projectTypes)||!cfg.register||!cfg.resource)return send(res,400,{error:'Invalid workflow configuration'});
+      const ids=new Set(cfg.workflows.map(w=>w.id));
+      if(ids.size!==cfg.workflows.length)return send(res,400,{error:'Duplicate workflow IDs'});
+      for(const w of cfg.workflows){
+        if(!Array.isArray(w.stages)||!Array.isArray(w.objects))return send(res,400,{error:'Invalid workflow structure'});
+        const objIds=new Set(w.objects.map(o=>o.id));
+        if(objIds.size!==w.objects.length)return send(res,400,{error:'Duplicate object IDs'});
+        for(const o of w.objects){
+          if(!o.name||!w.stages.includes(o.stage))return send(res,400,{error:'Invalid object name or stage'});
+          if(o.parent&&!objIds.has(o.parent))return send(res,400,{error:'Parent must belong to the same workflow'});
+          let cursor=o,seen=new Set([o.id]);
+          while(cursor.parent){if(seen.has(cursor.parent))return send(res,400,{error:'Circular object hierarchy'});seen.add(cursor.parent);cursor=w.objects.find(x=>x.id===cursor.parent);if(!cursor)break;}
+        }
+      }
+      if(cfg.projectTypes.some(t=>!ids.has(t.workflowId)))return send(res,400,{error:'Project type references an unknown workflow'});
+      db.workflowConfig=cfg;audit(db,user,'Updated workflow configuration');write(db);
+      return send(res,200,{ok:true});
+    }
+  }
+
   if(req.method==='GET'&&u.pathname==='/api/bootstrap'){
     const pmap=Object.fromEntries(db.projects.map(p=>[p.id,p]));
     const visibleProjects=db.projects.filter(p=>p.type!=='commercial'||ps.viewCommercial);
