@@ -28,7 +28,7 @@
   let registerTab='all';
   const clone=x=>JSON.parse(JSON.stringify(x));
   function config(){try{const c=JSON.parse(localStorage.getItem(CFG_KEY)||'null');return c&&c.workflows?c:clone(DEFAULT_CFG)}catch{return clone(DEFAULT_CFG)}}
-  function saveConfig(c){localStorage.setItem(CFG_KEY,JSON.stringify(c));toast('Configuration saved')}
+  function saveConfig(c){localStorage.setItem(CFG_KEY,JSON.stringify(c));api('/api/workflow-config',{method:'PUT',body:JSON.stringify({config:c})}).then(()=>toast('Configuration saved')).catch(err=>toast('Save failed: '+err.message))}
   function isAdmin(){return !!(S.data?.permissions?.manageSettings||S.data?.permissions?.manageRoles)}
   function navButton(view,label){return `<button data-view="${view}" ${S.view===view?'class="active"':''}>${label}</button>`}
   function rebuildNav(){
@@ -127,5 +127,5 @@
     const routes={projectregister:renderProjectRegister,resourceplanning:renderResourcePlanning,settingshub:renderSettingsHub,projecttypes:renderProjectTypes,workflowconfig:renderWorkflowConfig,registerconfig:renderRegisterConfig,objectconfig:renderObjectConfig,resourceconfig:renderResourceConfig,systemsettings:renderSystemSettings};
     if(routes[S.view]){routes[S.view]();rebuildNav();return}architectureRender();rebuildNav();
   };
-  const architectureLoad=load;load=async function(){await architectureLoad();rebuildNav();};
+  const architectureLoad=load;load=async function(){await architectureLoad();if(S.data?.permissions?.manageSettings){try{const remote=await api('/api/workflow-config');if(remote.config)localStorage.setItem(CFG_KEY,JSON.stringify(remote.config));else await api('/api/workflow-config',{method:'PUT',body:JSON.stringify({config:config()})});}catch(err){console.warn('Workflow configuration sync failed',err)}}rebuildNav();};
 })();
