@@ -22,7 +22,8 @@ Open http://localhost:5175. The Vite dev server proxies /api to the existing Nod
 - Login and refresh-based session restoration
 - Shared shell and permission-filtered navigation
 - Overview metrics and blank states
-- Project Register with Commercial / Internal EER tabs and search (read-only)
+- Project Register with Commercial / Internal EER tabs, search, create, edit and delete
+- Tasks & Work Packages register with task create, edit and delete (not yet feature parity)
 - My Work task list (read-only)
 - Manage Users active/offboarded tabs and account reactivation
 - Read-only Team, Resource Planning, Reports and Audit screens
