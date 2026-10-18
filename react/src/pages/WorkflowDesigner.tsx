@@ -21,9 +21,19 @@ export default function WorkflowDesigner({workflow,onChange}:{workflow:Workflow;
  function update(change:Partial<Node>){if(!node)return;onChange({...w,nodes:nodes.map(n=>n.id===node.id?{...n,...change}:n)})}
  function parentAllowed(id:string){let cur=nodes.find(n=>n.id===id);const seen=new Set([node?.id]);while(cur){if(seen.has(cur.id))return false;seen.add(cur.id);cur=nodes.find(n=>n.id===cur?.parent)}return true}
  function add(type:string,parent=selected){const id=crypto.randomUUID();onChange({...w,nodes:[...nodes,{id,name:type==='stage'?'New stage':'New '+type,type,parent:type==='stage'?'':parent,completion:'manual',permissions:{}}]});setSelected(id)}
- const positions=new Map<string,{x:number;y:number}>();let row=0;
- function place(n:Node,depth:number,y:number,seen:Set<string>){if(seen.has(n.id))return;seen.add(n.id);positions.set(n.id,{x:n.x??(60+depth*225),y:n.y??y});let childY=y;for(const child of nodes.filter(c=>c.parent===n.id)){place(child,depth+1,childY,seen);childY+=110}row=Math.max(row,childY,y+110)}
- const visited=new Set<string>();for(const n of nodes.filter(n=>!n.parent||!nodes.some(p=>p.id===n.parent)))place(n,0,row+55,visited);for(const n of nodes)if(!visited.has(n.id))place(n,0,row+55,visited);
+ const positions=new Map<string,{x:number;y:number}>();
+ // Derive every position from the hierarchy. Legacy saved coordinates can place
+ // children above their parents or on top of newly inserted siblings.
+ function place(n:Node,depth:number,y:number,seen:Set<string>):number{
+  if(seen.has(n.id))return y;
+  seen.add(n.id);positions.set(n.id,{x:60+depth*225,y});
+  let nextRow=y;
+  for(const child of nodes.filter(c=>c.parent===n.id))nextRow=place(child,depth+1,nextRow,seen);
+  return Math.max(y+110,nextRow);
+ }
+ let nextRow=55;const visited=new Set<string>();
+ for(const n of nodes.filter(n=>!n.parent||!nodes.some(p=>p.id===n.parent)))nextRow=place(n,0,nextRow,visited);
+ for(const n of nodes)if(!visited.has(n.id))nextRow=place(n,0,nextRow,visited);
  const width=Math.max(850,...Array.from(positions.values(),p=>p.x+230)),height=Math.max(580,...Array.from(positions.values(),p=>p.y+130));
  return <section className="visual-designer" aria-label={'Workflow designer: '+w.name}>
  <aside className="designer-palette"><small>COMPONENTS</small><p>Click to add to the workspace</p>{kinds.map((k,i)=><button aria-label={'Add '+k} type="button" key={k} onClick={()=>add(k)}><span>{['◆','▣','☷','✓','✎','◇','●','◉'][i]}</span>{({taskgroup:'Task Group',signoff:'Sign-off'} as Record<string,string>)[k]||k[0].toUpperCase()+k.slice(1)}</button>)}</aside>
