@@ -43,8 +43,9 @@ export default function ProjectEditor({project,canCommercial,canEer,canViewComme
  const set=(key:string,value:string)=>setValues(current=>({...current,[key]:value}));
  async function submit(e:FormEvent){e.preventDefault();setBusy(true);setError('');
   try{
-   const payload:Record<string,string>={type,title:values.title.trim(),stage:values.stage};
-   for(const field of fields)payload[field.key]=values[field.key]||'';
+   const payload:Record<string,string>={type,title:values.title.trim()};
+   if(canViewCommercialFields||type!=='commercial')payload.stage=values.stage;
+   for(const field of fields)if(field.key!=='status'||canViewCommercialFields||type!=='commercial')payload[field.key]=values[field.key]||'';
    if(type==='commercial'&&canViewCommercialFields)for(const field of pricingFields)payload[field.key]=values[field.key]||'';
    await request(project?'/projects/'+encodeURIComponent(project.id):'/projects',{method:project?'PATCH':'POST',body:JSON.stringify(payload)});
    await onSaved();
@@ -62,3 +63,4 @@ export default function ProjectEditor({project,canCommercial,canEer,canViewComme
   <div className="toolbar"><button type="button" onClick={onCancel}>Cancel</button><button type="submit" disabled={busy||!values.title.trim()}>{busy?'Saving…':'Save project'}</button></div>
  </form>
 }
+

@@ -1,0 +1,25 @@
+import {useState} from 'react';
+export type Node={id:string;name:string;type:string;parent:string;completion:string;permissions:Record<string,string>;x?:number;y?:number};
+export type Workflow={id:string;name:string;stages:string[];objects:{id:string;name:string;stage:string;parent?:string;permissions?:Record<string,string>}[];nodes?:Node[]};
+export type Config={workflows:Workflow[];projectTypes:{id:string;name:string;workflowId:string}[];register:Record<string,unknown>;resource:Record<string,unknown>};
+export const defaultConfig:Config={workflows:[{id:'commercial',name:'Commercial RFQ',stages:['RFQ','Awarded','In Progress','Escalated','Completed'],objects:[]},{id:'eer',name:'Internal EER',stages:['Raised','Review','Planning','In Progress','Sign-off','Completed'],objects:[]}],projectTypes:[{id:'commercial',name:'Commercial RFQ',workflowId:'commercial'},{id:'internal_eer',name:'Internal EER',workflowId:'eer'}],register:{columns:['wbs','title','client','owner','stage']},resource:{standardHoursPerDay:8}};
+const kinds=['stage','object','taskgroup','approval','signoff','decision','milestone','notification'];
+export function normalizeWorkflow(w:Workflow):Workflow{
+ const nodes:Node[]=w.nodes?.length?w.nodes:w.stages.map((name,i)=>({id:`stage-${i}`,name,type:'stage',parent:'',completion:'manual',permissions:{}}));
+ for(const o of w.objects)if(!nodes.some(n=>n.id===o.id))nodes.push({id:o.id,name:o.name,type:'object',parent:o.parent||nodes.find(n=>n.type==='stage'&&n.name===o.stage)?.id||'',completion:'manual',permissions:o.permissions||{}});
+ return {...w,nodes};
+}
+export function serializeConfig(config:Config):Config{
+ return {...config,workflows:config.workflows.map(w=>{
+ const nodes=w.nodes||[];if(!nodes.length)return w;
+ const stageOf=(n:Node):string=>{const seen=new Set<string>();let current:Node|undefined=n;while(current&&!seen.has(current.id)){seen.add(current.id);if(current.type==='stage')return current.name;current=nodes.find(x=>x.id===current?.parent)}return nodes.find(x=>x.type==='stage')?.name||w.stages[0]};
+ return {...w,stages:nodes.filter(n=>n.type==='stage').map(n=>n.name),objects:nodes.filter(n=>n.type!=='stage').map(n=>({id:n.id,name:n.name,stage:stageOf(n),parent:nodes.some(x=>x.id===n.parent&&x.type!=='stage')?n.parent:'',permissions:n.permissions}))};
+ })};
+}
+export default function WorkflowDesigner({workflow,onChange}:{workflow:Workflow;onChange:(w:Workflow)=>void}){
+ const [selected,setSelected]=useState('');const [error,setError]=useState('');const w=normalizeWorkflow(workflow),nodes=w.nodes!;const node=nodes.find(n=>n.id===selected);
+ function update(change:Partial<Node>){if(!node)return;onChange({...w,nodes:nodes.map(n=>n.id===node.id?{...n,...change}:n)})}
+ function parentAllowed(id:string){let cur=nodes.find(n=>n.id===id);const seen=new Set([node?.id]);while(cur){if(seen.has(cur.id))return false;seen.add(cur.id);cur=nodes.find(n=>n.id===cur?.parent)}return true}
+ function add(type:string){const id=crypto.randomUUID();onChange({...w,nodes:[...nodes,{id,name:type==='stage'?'New stage':'New '+type,type,parent:type==='stage'?'':selected,completion:'manual',permissions:{}}]});setSelected(id)}
+ return <section className="panel"><h3>Workflow designer: {w.name}</h3><div className="toolbar">{kinds.map(k=><button type="button" key={k} onClick={()=>add(k)}>Add {k}</button>)}</div>{error&&<p role="alert">{error}</p>}<div className="workflow-grid"><div aria-label="Workflow nodes">{nodes.map(n=><div key={n.id} className="workflow-node"><button type="button" aria-pressed={selected===n.id} onClick={()=>{setSelected(n.id);setError('')}}>{n.type}: {n.name}</button><small>Parent: {nodes.find(x=>x.id===n.parent)?.name||'Root'} · {n.completion}</small></div>)}</div>{node&&<fieldset><legend>Node properties</legend><label>Node name<input required value={node.name} onChange={e=>update({name:e.target.value})}/></label><label>Component type<select value={node.type} onChange={e=>update({type:e.target.value})}>{kinds.map(k=><option key={k}>{k}</option>)}</select></label><label>Parent node<select value={node.parent} onChange={e=>update({parent:e.target.value})}><option value="">Root</option>{nodes.filter(n=>parentAllowed(n.id)).map(n=><option key={n.id} value={n.id}>{n.name}</option>)}</select></label><label>Completion rule<select value={node.completion} onChange={e=>update({completion:e.target.value})}>{['manual','fields','children','tasks','approval','signoff'].map(k=><option key={k}>{k}</option>)}</select></label>{['System Administrator','Senior Management','LTSE','TSE/JTSE'].map(profile=><label key={profile}>{profile} access<select value={node.permissions[profile]||'hidden'} onChange={e=>update({permissions:{...node.permissions,[profile]:e.target.value}})}>{['hidden','view','edit','complete','approve'].map(p=><option key={p}>{p}</option>)}</select></label>)}<button type="button" onClick={()=>{if(nodes.some(n=>n.parent===node.id)){setError('Re-parent or delete child nodes first');return}onChange({...w,nodes:nodes.filter(n=>n.id!==node.id),objects:w.objects.filter(o=>o.id!==node.id)});setSelected('')}}>Delete node</button></fieldset>}</div></section>
+}

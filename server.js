@@ -86,22 +86,27 @@ const read = () => normalize(JSON.parse(fs.readFileSync(DB,'utf8')));
 const write = db => fs.writeFileSync(DB, JSON.stringify(normalize(db), null, 2));
 function body(req){ return new Promise((resolve,reject)=>{ let s=''; req.on('data',c=>{ s+=c; if(s.length>5e6) req.destroy(); }); req.on('end',()=>{ try{ resolve(s?JSON.parse(s):{}); }catch(e){ reject(e); } }); req.on('error',reject); }); }
 function cookies(req){ return Object.fromEntries(String(req.headers.cookie||'').split(';').map(v=>v.trim()).filter(Boolean).map(v=>{ const i=v.indexOf('='); return [decodeURIComponent(v.slice(0,i)),decodeURIComponent(v.slice(i+1))]; })); }
-function sessionOf(req){ const t=cookies(req).ets_session; return t && sessions.get(t); }
+function sessionOf(req){ const t=cookies(req).ets_session,s=t&&sessions.get(t);if(s&&Date.now()-s.createdAt>28800000){sessions.delete(t);return null}return s; }
 function currentUser(req,db){ const s=sessionOf(req); return s && db.users.find(u=>u.id===s.userId && u.active); }
 function profileOf(db,u){ return db.profiles.find(p=>p.id===u?.profileId); }
 function perms(db,u){ return profileOf(db,u)?.permissions || {}; }
 function send(res,code,obj,type='application/json',extra={}){ const out=type==='application/json'?JSON.stringify(obj):obj; res.writeHead(code,{'Content-Type':type,'Cache-Control':'no-store',...extra}); res.end(out); }
 function requireAuth(req,res){ const db=read(), user=currentUser(req,db); if(!user){ send(res,401,{error:'Authentication required'}); return null; } return {db,user,profile:profileOf(db,user),permissions:perms(db,user)}; }
-function audit(db,user,text,meta={}){ db.audit.unshift({id:id('a'),ts:now(),user:user?.name||'System',role:profileOf(db,user)?.name||'',text,...meta}); db.audit=db.audit.slice(0,1000); }
-function notify(db,text,recipients=['All']){ db.notifications.unshift({id:id('n'),ts:now(),text,recipients,readBy:[]}); db.notifications=db.notifications.slice(0,250); }
-function safeProject(p,ps){ const x=structuredClone(p); if(!ps.viewCommercialFields) delete x.pricing; return x; }
+function audit(db,user,text,meta={}){ db.audit.unshift({id:id('a'),ts:now(),user:user?.name||'System',role:profileOf(db,user)?.name||'',text,...meta});  }
+function notify(db,text,recipients=['All']){ db.notifications.unshift({id:id('n'),ts:now(),text,recipients,readBy:[]});  }
+function safeProject(p,ps){ const x=structuredClone(p); if(p.type!=='commercial'||!ps.viewCommercialFields)for(const k of ['pricing','rom','poStatus','negotiationNotes','offerDetails','agreementDetails'])delete x[k]; return x; }
+function safeAudit(a,ps){const x=structuredClone(a);if(!ps.viewCommercialFields&&x.changes)x.changes=x.changes.filter(c=>!['pricing','rom','poStatus','negotiationNotes','offerDetails','agreementDetails'].includes(c.field));return x;}
+function canReadTask(t,ps,p){return !!t && !!p && (p.type!=='commercial'||(ps.viewCommercial&&(p.stage!=='RFQ'||ps.viewRFQEngineering)));}
+function validDate(v){return typeof v==='string'&&/^\d{4}-\d{2}-\d{2}$/.test(v)&&!Number.isNaN(Date.parse(v))&&new Date(v).toISOString().slice(0,10)===v;}
+function taskError(t){if(!String(t.title||'').trim())return 'Task title is required';if(![t.mhActual,t.mhEstimate].every(n=>Number.isFinite(Number(n))&&Number(n)>=0))return 'Man-hours must be finite and non-negative';if(t.flag&&!['Escalation','Bottleneck'].includes(t.flag))return 'Invalid escalation flag';if(t.flag&&!String(t.flagReason||'').trim())return 'A flag reason is required';if(t.startDate&&!validDate(t.startDate)||t.dueDate&&!validDate(t.dueDate))return 'Invalid task date';if(t.startDate&&t.dueDate&&t.dueDate<t.startDate)return 'Due date cannot precede start date';return '';}
+
 function safeTask(t,ps,p){ const x=structuredClone(t); if(p?.type==='commercial' && p?.stage==='RFQ' && !ps.viewRFQEngineering){ for(const k of ['mhEstimate','mhActual','department','dependency','action','remarks']) delete x[k]; } return x; }
 function project(db,pid){ return db.projects.find(p=>p.id===pid); }
 function taskLevel(t,p){ if(t.level) return Number(t.level); const rest=String(t.wbs||'').replace(String(p?.wbs||''),'').replace(/^\./,''); return rest?rest.split('.').length+1:1; }
 function nextWbs(db,p,parent){ parent=String(parent||p.wbs); const depth=parent.split('.').length+1; const nums=db.tasks.filter(t=>t.projectId===p.id&&String(t.wbs).startsWith(parent+'.')&&String(t.wbs).split('.').length===depth).map(t=>Number(String(t.wbs).split('.').pop())).filter(Number.isFinite); return `${parent}.${(nums.length?Math.max(...nums):0)+1}`; }
 function diff(a,b,fields){ return fields.filter(k=>JSON.stringify(a[k]??'')!==JSON.stringify(b[k]??'')).map(k=>({field:k,from:a[k]??'',to:b[k]??''})); }
 function mime(p){ return p.endsWith('.css')?'text/css':p.endsWith('.js')?'application/javascript':p.endsWith('.html')?'text/html':'application/octet-stream'; }
-function csv(v){ return `"${String(v??'').replaceAll('"','""')}"`; }
+function csv(v){if(typeof v==='string'&&/^[=+@\t\r-]/.test(v))v="'"+v; return `"${String(v??'').replaceAll('"','""')}"`; }
 function spreadHours(startDate,total,max=8){ const result={}; if(!startDate||!Number(total)) return result; let d=new Date(`${startDate}T00:00:00`), left=Number(total), guard=0; while(left>0&&guard++<500){ const day=d.getDay(); if(day!==0&&day!==6){ const h=Math.min(max,left); result[d.toISOString().slice(0,10)]=h; left-=h; } d.setDate(d.getDate()+1); } return result; }
 function activeAdminCount(db){ return db.users.filter(u=>u.active && profileOf(db,u)?.permissions?.manageUsers && profileOf(db,u)?.permissions?.manageRoles).length; }
 function profileExists(db,pid){ return db.profiles.some(p=>p.id===pid); }
@@ -138,7 +143,11 @@ const server = http.createServer(async(req,res)=>{ try{
       if(!cfg||!Array.isArray(cfg.workflows)||!Array.isArray(cfg.projectTypes)||!cfg.register||!cfg.resource)return send(res,400,{error:'Invalid workflow configuration'});
       const ids=new Set(cfg.workflows.map(w=>w.id));
       if(ids.size!==cfg.workflows.length)return send(res,400,{error:'Duplicate workflow IDs'});
+      if(!cfg.workflows.length)return send(res,400,{error:'At least one workflow is required'});
       for(const w of cfg.workflows){
+        if(!w.id||!String(w.name||'').trim()||!w.stages?.length||new Set(w.stages).size!==w.stages.length||w.stages.some(s=>!String(s).trim()))return send(res,400,{error:'Workflow name and unique non-empty stages required'});
+        if(w.nodes){if(!Array.isArray(w.nodes))return send(res,400,{error:'Invalid workflow nodes'});const nids=new Set(w.nodes.map(n=>n.id));if(nids.size!==w.nodes.length)return send(res,400,{error:'Duplicate node IDs'});for(const n of w.nodes){if(!n.id||!String(n.name||'').trim()||!['stage','object','taskgroup','approval','signoff','decision','milestone','notification'].includes(n.type)||!['manual','fields','children','tasks','approval','signoff'].includes(n.completion))return send(res,400,{error:'Invalid workflow node'});let cur=n,seen=new Set([n.id]);while(cur.parent){if(!nids.has(cur.parent)||seen.has(cur.parent))return send(res,400,{error:'Invalid or circular node parent'});seen.add(cur.parent);cur=w.nodes.find(x=>x.id===cur.parent)}}}
+
         if(!Array.isArray(w.stages)||!Array.isArray(w.objects))return send(res,400,{error:'Invalid workflow structure'});
         const objIds=new Set(w.objects.map(o=>o.id));
         if(objIds.size!==w.objects.length)return send(res,400,{error:'Duplicate object IDs'});
@@ -163,8 +172,8 @@ const server = http.createServer(async(req,res)=>{ try{
     return send(res,200,{user:user.name,userId:user.userId,profile:profileOf(db,user)?.name,permissions:ps,
       users:db.users.filter(x=>x.active).map(x=>({id:x.id,name:x.name,position:x.position,capacity:x.capacity,profileId:x.profileId})),
       projects:visibleProjects.map(p=>safeProject(p,ps)),
-      tasks:db.tasks.filter(t=>visibleIds.has(t.projectId)).map(t=>({...safeTask(t,ps,pmap[t.projectId]),level:taskLevel(t,pmap[t.projectId])})),
-      comments:db.comments, escalations:ps.viewReports?db.escalations:[], notifications, audit:ps.viewAudit?db.audit:[], leave:db.leave, settings:db.settings});
+      tasks:db.tasks.filter(t=>visibleIds.has(t.projectId)&&canReadTask(t,ps,pmap[t.projectId])).map(t=>({...safeTask(t,ps,pmap[t.projectId]),level:taskLevel(t,pmap[t.projectId])})),
+      comments:db.comments.filter(c=>canReadTask(db.tasks.find(t=>t.id===c.taskId),ps,pmap[c.projectId])), escalations:ps.viewReports?db.escalations.filter(e=>canReadTask(db.tasks.find(t=>t.id===e.taskId),ps,pmap[e.projectId])):[], notifications, audit:ps.viewAudit?db.audit.map(a=>safeAudit(a,ps)):[], leave:db.leave, settings:db.settings});
   }
 
   if(req.method==='GET'&&u.pathname==='/api/admin/users'){
@@ -257,7 +266,7 @@ const server = http.createServer(async(req,res)=>{ try{
   }
   if(req.method==='PATCH'&&/^\/api\/projects\/[^/]+$/.test(u.pathname)){
     if(!ps.editProjects)return send(res,403,{error:'Edit Projects permission required'}); const pid=u.pathname.split('/').pop(), p=project(db,pid); if(!p)return send(res,404,{error:'Project not found'});
-    const b=await body(req), before=structuredClone(p), fields=['client','title','aircraft','registration','releaseType','sector','owner','priority','stage','status','scope','edd','requiredInputs','deliverables','clientFocal','doaFocal','projectManager','site','sage','nreStatus','remarks'];
+    if(p.type==='commercial'&&!ps.viewCommercial)return send(res,403,{error:'Commercial access required'}); const b=await body(req), before=structuredClone(p); if(p.type==='commercial'&&!ps.viewCommercialFields&&['rom','poStatus','negotiationNotes','offerDetails','agreementDetails','pricing','stage','status'].some(k=>Object.hasOwn(b,k)))return send(res,403,{error:'Commercial fields and handover require management permission'}); const fields=['client','title','aircraft','registration','releaseType','sector','owner','priority','stage','status','scope','edd','startDate','requiredInputs','deliverables','clientFocal','doaFocal','projectManager','site','sage','nreStatus','remarks'];
     for(const k of fields)if(Object.hasOwn(b,k))p[k]=b[k]; if(p.type==='commercial'&&ps.viewCommercialFields){ p.pricing||={}; for(const k of ['rom','poStatus','negotiationNotes','offerDetails','agreementDetails'])if(Object.hasOwn(b,k))p.pricing[k]=b[k]; }
     const changes=diff(before,p,fields.concat(['pricing'])); if(changes.length)audit(db,user,`Updated project ${p.wbs}: ${changes.map(c=>c.field).join(', ')}`,{entityType:'project',entityId:p.id,projectId:p.id,changes}); write(db); return send(res,200,{ok:true,project:safeProject(p,ps)});
   }
@@ -269,41 +278,45 @@ const server = http.createServer(async(req,res)=>{ try{
 
   if(req.method==='POST'&&u.pathname==='/api/work-packages'){
     if(!ps.createTasks)return send(res,403,{error:'Create Tasks permission required'}); const b=await body(req), p=project(db,b.projectId); if(!p)return send(res,404,{error:'Project not found'});
-    const wbs=nextWbs(db,p,p.wbs), t={id:id('wp'),projectId:p.id,wbs,parentWbs:p.wbs,level:2,title:b.title||'Work package',department:b.department||b.title||'Engineering',assignee:ps.assignTasks?(b.assignee||'Unassigned'):'Unassigned',priority:b.priority||'Normal',status:b.status||'In Progress',mhEstimate:Number(b.mhEstimate||0),mhActual:Number(b.mhActual||0),startDate:b.startDate||new Date().toISOString().slice(0,10),dueDate:b.dueDate||'',dependency:'',action:b.action||'',remarks:b.remarks||'',flag:'',flagReason:''};
+    if(!canReadTask({},ps,p))return send(res,403,{error:'Project engineering access required'}); const wbs=nextWbs(db,p,p.wbs), t={id:id('wp'),projectId:p.id,wbs,parentWbs:p.wbs,level:2,title:b.title||'Work package',department:b.department||b.title||'Engineering',assignee:ps.assignTasks?(b.assignee||'Unassigned'):'Unassigned',priority:b.priority||'Normal',status:b.status||'In Progress',mhEstimate:Number(b.mhEstimate||0),mhActual:Number(b.mhActual||0),startDate:b.startDate||new Date().toISOString().slice(0,10),dueDate:b.dueDate||'',dependency:'',action:b.action||'',remarks:b.remarks||'',flag:'',flagReason:''};
     db.tasks.push(t); audit(db,user,`Created Level 2 work package ${wbs}`,{entityType:'task',entityId:t.id,projectId:p.id}); write(db); return send(res,201,{ok:true,task:safeTask(t,ps,p)});
   }
   if(req.method==='POST'&&u.pathname==='/api/tasks'){
     if(!ps.createTasks)return send(res,403,{error:'Create Tasks permission required'}); const b=await body(req), p=project(db,b.projectId); if(!p)return send(res,404,{error:'Project not found'});
-    const parent=b.parentWbs||p.wbs, wbs=nextWbs(db,p,parent), t={id:id('t'),projectId:p.id,wbs,parentWbs:parent,level:String(parent).split('.').length===String(p.wbs).split('.').length?2:3,title:b.title||'New task',department:b.department||'Engineering',assignee:ps.assignTasks?(b.assignee||'Unassigned'):'Unassigned',priority:b.priority||'Normal',status:b.status||(b.assignee?'Assigned':'To Do'),mhEstimate:Number(b.mhEstimate||0),mhActual:Number(b.mhActual||0),startDate:b.startDate||new Date().toISOString().slice(0,10),dueDate:b.dueDate||'',dependency:b.dependency||'',action:b.action||'',remarks:b.remarks||'',flag:b.flag||'',flagReason:b.flagReason||''};
+    if(!canReadTask({},ps,p))return send(res,403,{error:'Project engineering access required'}); const parent=b.parentWbs||p.wbs; if(parent!==p.wbs&&!db.tasks.some(t=>t.projectId===p.id&&t.wbs===parent&&Number(t.level)===2))return send(res,400,{error:'Invalid parent work package'}); const wbs=nextWbs(db,p,parent), t={id:id('t'),projectId:p.id,wbs,parentWbs:parent,level:3,title:b.title||'New task',department:b.department||'Engineering',assignee:ps.assignTasks?(b.assignee||'Unassigned'):'Unassigned',priority:b.priority||'Normal',status:b.assignee&&b.assignee!=='Unassigned'&&(!b.status||b.status==='To Do')?'Assigned':(b.status||'To Do'),mhEstimate:Number(b.mhEstimate||0),mhActual:Number(b.mhActual||0),startDate:b.startDate||new Date().toISOString().slice(0,10),dueDate:b.dueDate||'',dependency:b.dependency||'',action:b.action||'',remarks:b.remarks||'',flag:b.flag||'',flagReason:b.flagReason||''};
+    const validation=taskError(t);if(validation)return send(res,422,{error:validation}); if(t.assignee!=='Unassigned'&&!db.users.some(u=>u.active&&u.name===t.assignee))return send(res,422,{error:'Assignee must be an active team member'});
     if(t.mhActual>t.mhEstimate&&(!['Escalation','Bottleneck'].includes(t.flag)||!String(t.flagReason||'').trim()))return send(res,422,{error:'Actual MH exceeds estimate. Select Escalation or Bottleneck and enter a reason.'});
-    db.tasks.push(t); audit(db,user,`Created task ${wbs} — ${t.title}`,{entityType:'task',entityId:t.id,projectId:p.id}); if(t.assignee!=='Unassigned')notify(db,`Task ${wbs} assigned to ${t.assignee}`,[t.assignee]); write(db); return send(res,201,{ok:true,task:safeTask(t,ps,p)});
+    if(t.flag)db.escalations.unshift({id:id('e'),taskId:t.id,projectId:t.projectId,type:t.flag,reason:t.flagReason,user:user.name,ts:now()}); db.tasks.push(t); audit(db,user,`Created task ${wbs} — ${t.title}`,{entityType:'task',entityId:t.id,projectId:p.id}); if(t.assignee!=='Unassigned')notify(db,`Task ${wbs} assigned to ${t.assignee}`,[t.assignee]); write(db); return send(res,201,{ok:true,task:safeTask(t,ps,p)});
   }
   if(req.method==='PATCH'&&/^\/api\/tasks\/[^/]+$/.test(u.pathname)){
     const tid=u.pathname.split('/').pop(), t=db.tasks.find(x=>x.id===tid); if(!t)return send(res,404,{error:'Task not found'}); const p=project(db,t.projectId), b=await body(req), before=structuredClone(t);
-    const allowed=['status','remarks','dependency']; if(ps.updateActualMH)allowed.push('mhActual'); if(ps.raiseEscalations)allowed.push('flag','flagReason'); if(ps.assignTasks)allowed.push('assignee','priority','mhEstimate','dueDate','department','startDate','action','title');
+    if(!canReadTask(t,ps,p)||(!ps.assignTasks&&t.assignee!==user.name))return send(res,403,{error:'Only the assignee or a task lead can update this task'}); if(!ps.assignTasks&&['assignee','mhEstimate','title','projectId','startDate','dueDate'].some(k=>Object.hasOwn(b,k)&&b[k]!==t[k]))return send(res,403,{error:'Task assignment permission required'}); const allowed=['status','remarks','dependency']; if(ps.updateActualMH)allowed.push('mhActual'); if(ps.raiseEscalations)allowed.push('flag','flagReason'); if(ps.assignTasks)allowed.push('assignee','priority','mhEstimate','dueDate','department','startDate','action','title');
     const candidate={...t}; for(const k of allowed)if(Object.hasOwn(b,k))candidate[k]=['mhActual','mhEstimate'].includes(k)?Number(b[k]||0):b[k];
+    const validation=taskError(candidate);if(validation)return send(res,422,{error:validation}); if(candidate.assignee!=='Unassigned'&&!db.users.some(u=>u.active&&u.name===candidate.assignee))return send(res,422,{error:'Assignee must be an active team member'}); if(before.assignee!==candidate.assignee&&candidate.assignee!=='Unassigned'&&candidate.status==='To Do')candidate.status='Assigned';
     if(Number(candidate.mhActual)>Number(candidate.mhEstimate)&&(!['Escalation','Bottleneck'].includes(candidate.flag)||!String(candidate.flagReason||'').trim()))return send(res,422,{error:'Actual MH exceeds estimate. Select Escalation or Bottleneck and enter a reason.'});
     Object.assign(t,candidate); const changes=diff(before,t,allowed); if(changes.length){ audit(db,user,`Updated task ${t.wbs}: ${changes.map(c=>c.field).join(', ')}`,{entityType:'task',entityId:t.id,projectId:t.projectId,changes}); if(before.assignee!==t.assignee&&t.assignee)notify(db,`Task ${t.wbs} assigned to ${t.assignee}`,[t.assignee]); if(before.flag!==t.flag||before.flagReason!==t.flagReason){ db.escalations.unshift({id:id('e'),taskId:t.id,projectId:t.projectId,type:t.flag,reason:t.flagReason,user:user.name,ts:now()}); if(t.flag)notify(db,`${t.flag} flagged on ${t.wbs}`,['Senior Management','System Administrator']); } }
     write(db); return send(res,200,{ok:true,task:safeTask(t,ps,p)});
   }
   if(req.method==='DELETE'&&/^\/api\/tasks\/[^/]+$/.test(u.pathname)){
     if(!ps.createTasks)return send(res,403,{error:'Create Tasks permission required'}); const tid=u.pathname.split('/').pop(), t=db.tasks.find(x=>x.id===tid); if(!t)return send(res,404,{error:'Task not found'});
-    db.tasks=db.tasks.filter(x=>x.id!==tid); db.comments=db.comments.filter(c=>c.taskId!==tid); audit(db,user,`Deleted task ${t.wbs}`,{entityType:'task',entityId:tid,projectId:t.projectId}); write(db); return send(res,200,{ok:true});
+    if(!canReadTask(t,ps,project(db,t.projectId)))return send(res,403,{error:'Task access required'}); if(db.tasks.some(x=>x.projectId===t.projectId&&x.parentWbs===t.wbs))return send(res,409,{error:'Delete child tasks before deleting a work package'}); db.tasks=db.tasks.filter(x=>x.id!==tid); db.comments=db.comments.filter(c=>c.taskId!==tid); audit(db,user,`Deleted task ${t.wbs}`,{entityType:'task',entityId:tid,projectId:t.projectId}); write(db); return send(res,200,{ok:true});
   }
   if(req.method==='POST'&&/^\/api\/tasks\/[^/]+\/comments$/.test(u.pathname)){
-    const tid=u.pathname.split('/')[3], t=db.tasks.find(x=>x.id===tid), b=await body(req); if(!t)return send(res,404,{error:'Task not found'}); if(!String(b.text||'').trim())return send(res,400,{error:'Comment is required'});
+    const tid=u.pathname.split('/')[3], t=db.tasks.find(x=>x.id===tid), b=await body(req); if(!t)return send(res,404,{error:'Task not found'}); if(!canReadTask(t,ps,project(db,t.projectId)))return send(res,403,{error:'Task access required'}); if(!String(b.text||'').trim())return send(res,400,{error:'Comment is required'});
     const c={id:id('c'),taskId:tid,projectId:t.projectId,text:String(b.text).trim(),user:user.name,ts:now()}; db.comments.unshift(c); audit(db,user,`Commented on task ${t.wbs}`,{entityType:'comment',entityId:c.id,projectId:t.projectId}); write(db); return send(res,201,{ok:true,comment:c});
   }
 
   if(req.method==='GET'&&u.pathname==='/api/capacity'){
     if(!ps.viewCapacity)return send(res,403,{error:'View Capacity permission required'});
     const start=u.searchParams.get('start')||new Date().toISOString().slice(0,10), days=Math.min(90,Math.max(1,Number(u.searchParams.get('days')||14))), standard=Number(db.settings.standardHoursPerDay||8);
+    if(!validDate(start)||!Number.isFinite(days))return send(res,400,{error:'Invalid capacity date or day count'});
     const dates=[]; let d=new Date(`${start}T00:00:00`); for(let i=0;i<days;i++){dates.push(d.toISOString().slice(0,10));d.setDate(d.getDate()+1);}
-    const rows=db.users.filter(x=>x.active).map(person=>{ const booked={}; for(const t of db.tasks.filter(t=>t.assignee===person.name)){ const spread=spreadHours(t.startDate,Number(t.mhEstimate||0),standard); for(const [dt,h] of Object.entries(spread))booked[dt]=(booked[dt]||0)+h; } const cells=dates.map(date=>{ const leave=db.leave.find(l=>l.user===person.name&&l.date===date); const weekend=[0,6].includes(new Date(`${date}T00:00:00`).getDay()); const cap=weekend?0:Number(person.capacity||standard); const used=Number(booked[date]||0); return {date,booked:used,capacity:cap,free:leave?0:Math.max(0,cap-used),leave:leave?.type||''}; }); return {user:person.name,position:person.position,capacity:Number(person.capacity||standard),cells}; });
+    const rows=db.users.filter(x=>x.active).map(person=>{ const booked={}; for(const t of db.tasks.filter(t=>t.assignee===person.name&&Number(t.level||3)>=3&&!['Completed','Lost/Cancelled'].includes(t.status)&&canReadTask(t,ps,project(db,t.projectId)))){ const spread=spreadHours(t.startDate,Number(t.mhEstimate||0),standard); for(const [dt,h] of Object.entries(spread))booked[dt]=(booked[dt]||0)+h; } const cells=dates.map(date=>{ const leave=db.leave.find(l=>l.user===person.name&&l.date===date); const weekend=[0,6].includes(new Date(`${date}T00:00:00`).getDay()); const cap=weekend||leave?0:Number(person.capacity||standard); const used=Number(booked[date]||0); return {date,booked:used,capacity:cap,free:leave?0:Math.max(0,cap-used),leave:leave?.type||''}; }); return {user:person.name,position:person.position,capacity:Number(person.capacity||standard),cells}; });
     return send(res,200,{start,days,rows});
   }
   if(req.method==='POST'&&u.pathname==='/api/leave'){
     if(!ps.manageLeave)return send(res,403,{error:'Manage Leave permission required'}); const b=await body(req); if(!b.user||!b.date)return send(res,400,{error:'User and date are required'});
+    if(!validDate(b.date)||!db.users.some(u=>u.active&&u.name===b.user))return send(res,422,{error:'Valid date and active team member required'}); if(db.leave.some(l=>l.user===b.user&&l.date===b.date))return send(res,409,{error:'Leave already recorded for this day'});
     const l={id:id('l'),user:b.user,date:b.date,type:b.type||'Leave',note:b.note||''}; db.leave.push(l); audit(db,user,`Marked ${l.type} for ${l.user} on ${l.date}`,{entityType:'leave',entityId:l.id}); write(db); return send(res,201,{ok:true,id:l.id});
   }
   if(req.method==='DELETE'&&/^\/api\/leave\/[^/]+$/.test(u.pathname)){
@@ -327,7 +340,7 @@ const server = http.createServer(async(req,res)=>{ try{
   }
 
   if(req.method==='POST'&&u.pathname==='/api/import'){
-    if(!ps.importData)return send(res,403,{error:'Import permission required'}); const b=await body(req); const rows=Array.isArray(b.rows)?b.rows:[]; if(!rows.length)return send(res,400,{error:'No rows supplied'});
+    if(!ps.importData)return send(res,403,{error:'Import permission required'}); if(!ps.createCommercial||!ps.createTasks)return send(res,403,{error:'Commercial creation and task permissions required for tracker import'}); const b=await body(req); const rows=Array.isArray(b.rows)?b.rows:[]; if(!rows.length)return send(res,400,{error:'No rows supplied'});
     const createdProjects=new Map(); let projectsAdded=0,tasksAdded=0;
     for(const row of rows){ const wbs=String(row.WBS??row.wbs??'').trim(), level=Number(row.Level??row.level??0); if(!wbs)continue;
       if(level===1){ const existing=db.projects.find(p=>String(p.wbs)===wbs); if(existing){createdProjects.set(wbs,existing);continue;} const p={id:id('p'),wbs,type:'commercial',client:String(row.CLIENT??row.Client??''),title:String(row.Project??row.project??row.Details??'Imported project'),aircraft:String(row.Aircraft??''),registration:String(row['A/C Reg']??''),releaseType:String(row['MRO Release']??''),sector:String(row['ETS Sub-Dept']??''),owner:String(row.Owner??''),priority:String(row.Priority??'Normal'),stage:String(row.Stage??row.Status??'RFQ'),status:String(row.Status??'RFQ'),scope:String(row['DOA Scope']??''),startDate:String(row['Start Date']??new Date().toISOString().slice(0,10)),remarks:String(row.Remarks??''),pricing:{}}; db.projects.push(p); createdProjects.set(wbs,p); projectsAdded++; }
@@ -337,21 +350,27 @@ const server = http.createServer(async(req,res)=>{ try{
   }
 
   if(req.method==='PATCH'&&u.pathname==='/api/settings'){
-    if(!ps.manageSettings)return send(res,403,{error:'Manage Settings permission required'}); const b=await body(req),before=structuredClone(db.settings); db.settings={...db.settings,...b}; audit(db,user,'Updated system settings',{entityType:'settings',changes:diff(before,db.settings,Object.keys(b))}); write(db); return send(res,200,{ok:true,settings:db.settings});
+    if(!ps.manageSettings)return send(res,403,{error:'Manage Settings permission required'}); const b=await body(req),before=structuredClone(db.settings); if(Object.hasOwn(b,'standardHoursPerDay')&&(!Number.isFinite(Number(b.standardHoursPerDay))||Number(b.standardHoursPerDay)<=0||Number(b.standardHoursPerDay)>24))return send(res,422,{error:'Standard hours must be greater than zero and at most 24'}); db.settings={...db.settings,...b}; audit(db,user,'Updated system settings',{entityType:'settings',changes:diff(before,db.settings,Object.keys(b))}); write(db); return send(res,200,{ok:true,settings:db.settings});
   }
   if(req.method==='POST'&&u.pathname==='/api/notifications/read'){
     const b=await body(req),ids=b.ids||db.notifications.map(n=>n.id); db.notifications.forEach(n=>{n.readBy||=[];if(ids.includes(n.id)&&!n.readBy.includes(user.name))n.readBy.push(user.name)}); write(db); return send(res,200,{ok:true});
   }
+  if(req.method==='GET'&&u.pathname==='/api/export.json'){
+    if(!ps.exportData)return send(res,403,{error:'Export permission required'});
+    const projects=db.projects.filter(p=>p.type!=='commercial'||ps.viewCommercial), ids=new Set(projects.map(p=>p.id));
+    const tasks=db.tasks.filter(t=>ids.has(t.projectId)&&canReadTask(t,ps,project(db,t.projectId))), tids=new Set(tasks.map(t=>t.id));
+    return send(res,200,{projects:projects.map(p=>safeProject(p,ps)),tasks:tasks.map(t=>safeTask(t,ps,project(db,t.projectId))),comments:db.comments.filter(c=>tids.has(c.taskId)),escalations:ps.viewReports?db.escalations.filter(e=>tids.has(e.taskId)):[],leave:ps.manageLeave?db.leave:[],audit:ps.viewAudit?db.audit.map(a=>safeAudit(a,ps)):[],users:db.users.map(({id,name,position,capacity,active})=>({id,name,position,capacity,active}))},'application/json',{'Content-Disposition':'attachment; filename="ets-ipm-data.json"'});
+  }
   if(req.method==='GET'&&u.pathname==='/api/export.csv'){
     if(!ps.exportData)return send(res,403,{error:'Export permission required'}); const pmap=Object.fromEntries(db.projects.map(p=>[p.id,p])),head=['WBS','Project','Client','Type','Stage','Task','Assignee','Status','MH Estimate','MH Actual','Flag'],lines=[head.map(csv).join(',')];
-    for(const t of db.tasks){const p=pmap[t.projectId];if(p?.type==='commercial'&&!ps.viewCommercial)continue;const st=safeTask(t,ps,p);lines.push([t.wbs,p?.title,p?.client,p?.type,p?.stage,t.title,t.assignee,t.status,st.mhEstimate??'',st.mhActual??'',t.flag].map(csv).join(','));}
+    for(const t of db.tasks){const p=pmap[t.projectId];if(p?.type==='commercial'&&!ps.viewCommercial)continue;if(!canReadTask(t,ps,p))continue;const st=safeTask(t,ps,p);lines.push([t.wbs,p?.title,p?.client,p?.type,p?.stage,t.title,t.assignee,t.status,st.mhEstimate??'',st.mhActual??'',t.flag].map(csv).join(','));}
     return send(res,200,lines.join('\n'),'text/csv',{'Content-Disposition':'attachment; filename="ETS_Work_Tracker_export.csv"'});
   }
   if(req.method==='GET'&&u.pathname.startsWith('/api/reports/')){
     if(!ps.viewReports)return send(res,403,{error:'View Reports permission required'}); let lines;
-    if(u.pathname.endsWith('mh.csv'))lines=[['WBS','Task','Estimate','Actual','Variance'].map(csv).join(','),...db.tasks.filter(t=>Number(t.level||3)>=3).map(t=>[t.wbs,t.title,t.mhEstimate,t.mhActual,Number(t.mhActual||0)-Number(t.mhEstimate||0)].map(csv).join(','))];
-    else if(u.pathname.endsWith('escalations.csv'))lines=[['Timestamp','Task','Type','User','Reason'].map(csv).join(','),...db.escalations.map(e=>{const t=db.tasks.find(x=>x.id===e.taskId);return[e.ts,t?.wbs||e.taskId,e.type,e.user,e.reason].map(csv).join(',')})];
-    else{const counts={};db.tasks.filter(t=>Number(t.level||3)>=3).forEach(t=>counts[t.status]=(counts[t.status]||0)+1);lines=['Status,Count',...Object.entries(counts).map(([s,c])=>`${csv(s)},${c}`)];}
+    if(u.pathname.endsWith('mh.csv'))lines=[['WBS','Task','Estimate','Actual','Variance'].map(csv).join(','),...db.tasks.filter(t=>Number(t.level||3)>=3&&canReadTask(t,ps,project(db,t.projectId))).map(t=>[t.wbs,t.title,t.mhEstimate,t.mhActual,Number(t.mhActual||0)-Number(t.mhEstimate||0)].map(csv).join(','))];
+    else if(u.pathname.endsWith('escalations.csv'))lines=[['Timestamp','Task','Type','User','Reason'].map(csv).join(','),...db.escalations.filter(e=>canReadTask(db.tasks.find(t=>t.id===e.taskId),ps,project(db,e.projectId))).map(e=>{const t=db.tasks.find(x=>x.id===e.taskId);return[e.ts,t?.wbs||e.taskId,e.type,e.user,e.reason].map(csv).join(',')})];
+    else{const counts={};db.tasks.filter(t=>Number(t.level||3)>=3&&canReadTask(t,ps,project(db,t.projectId))).forEach(t=>counts[t.status]=(counts[t.status]||0)+1);lines=['Status,Count',...Object.entries(counts).map(([s,c])=>`${csv(s)},${c}`)];}
     return send(res,200,lines.join('\n'),'text/csv');
   }
   if(req.method==='POST'&&u.pathname==='/api/demo/clear-records'){
@@ -370,3 +389,4 @@ const server = http.createServer(async(req,res)=>{ try{
 }catch(e){console.error(e);return send(res,500,{error:e.message||'Server error'});}});
 
 server.listen(PORT,'0.0.0.0',()=>console.log(`ETS IPM running on port ${PORT}`));
+
