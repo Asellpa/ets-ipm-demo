@@ -31,6 +31,25 @@ function profilePermissionError(value){
   }
   return '';
 }
+const WORKFLOW_ACCESS = new Set(['hidden','view','edit','complete','approve']);
+function normalizeWorkflowPermissions(config,profiles){
+  if(!config)return null;
+  const cfg=structuredClone(config);
+  for(const w of cfg.workflows||[])for(const item of [...(w.nodes||[]),...(w.objects||[])]){
+    if(item.permissions===undefined)continue;
+    if(!item.permissions||typeof item.permissions!=='object'||Array.isArray(item.permissions))throw Error('Workflow profile permissions must be an object');
+    const result={};
+    for(const [key,value] of Object.entries(item.permissions)){
+      const profile=profiles.find(p=>p.id===key)||profiles.find(p=>p.name===key);
+      if(!profile)throw Error('Workflow references an unknown profile: '+key);
+      if(!WORKFLOW_ACCESS.has(value))throw Error('Invalid workflow access for '+profile.name+': '+value);
+      // Stable profile IDs take precedence over old name-based keys.
+      if(key===profile.id||!Object.hasOwn(result,profile.id))result[profile.id]=value;
+    }
+    item.permissions=result;
+  }
+  return cfg;
+}
 const fullPermissions = () => Object.fromEntries(PERMS.map(k => [k, true]));
 const DEFAULT_PROFILES = [
   { id:'prof-admin', name:'System Administrator', description:'Full application and administration access', permissions:fullPermissions() },
@@ -147,7 +166,7 @@ const server = http.createServer(async(req,res)=>{ let release;try{
   if(u.pathname==='/api/workflow-config'){
     if(req.method==='GET'){
       if(!ps.manageSettings)return send(res,403,{error:'Manage Settings permission required'});
-      return send(res,200,{config:db.workflowConfig||null});
+      let config;try{config=normalizeWorkflowPermissions(db.workflowConfig,db.profiles)}catch(e){return send(res,400,{error:e.message})}return send(res,200,{config,profiles:db.profiles.map(p=>({id:p.id,name:p.name})),runtimeEnforced:false});
     }
     if(req.method==='PUT'){
       if(!ps.manageSettings)return send(res,403,{error:'Manage Settings permission required'});
@@ -171,7 +190,7 @@ const server = http.createServer(async(req,res)=>{ let release;try{
         }
       }
       if(cfg.projectTypes.some(t=>!ids.has(t.workflowId)))return send(res,400,{error:'Project type references an unknown workflow'});
-      db.workflowConfig=cfg;audit(db,user,'Updated workflow configuration');write(db);
+      let validated;try{validated=normalizeWorkflowPermissions(cfg,db.profiles)}catch(e){return send(res,400,{error:e.message})}db.workflowConfig=validated;audit(db,user,'Updated workflow configuration');write(db);
       return send(res,200,{ok:true});
     }
   }
@@ -254,17 +273,18 @@ const server = http.createServer(async(req,res)=>{ let release;try{
       if(Object.hasOwn(b,'name')&&String(b.name).trim()!==p.name)return send(res,400,{error:'System Administrator profile name is protected'});
       if(b.permissions&&PERMS.some(k=>b.permissions[k]===false))return send(res,400,{error:'System Administrator permissions are protected'});
     }
+    let migratedWorkflow;try{migratedWorkflow=normalizeWorkflowPermissions(db.workflowConfig,db.profiles)}catch(e){return send(res,400,{error:e.message})}
     if(Object.hasOwn(b,'name')){ const nm=String(b.name).trim(); if(!nm)return send(res,400,{error:'Profile name is required'}); if(db.profiles.some(x=>x.id!==pid&&x.name.toLowerCase()===nm.toLowerCase()))return send(res,409,{error:'Profile name already exists'}); p.name=nm; }
     if(Object.hasOwn(b,'description'))p.description=String(b.description||'').trim();
     if(b.permissions)for(const k of PERMS)if(Object.hasOwn(b.permissions,k))p.permissions[k]=!!b.permissions[k];
-    if(pid==='prof-admin')p.permissions=fullPermissions();
+    if(pid==='prof-admin')p.permissions=fullPermissions();if(migratedWorkflow)db.workflowConfig=migratedWorkflow;
     audit(db,user,`Updated role profile ${p.name}`,{entityType:'profile',entityId:p.id,changes:diff(before,p,['name','description','permissions'])}); write(db); return send(res,200,{ok:true});
   }
   if(req.method==='DELETE'&&/^\/api\/admin\/profiles\/[^/]+$/.test(u.pathname)){
     if(!ps.manageRoles)return send(res,403,{error:'Manage Roles permission required'}); const pid=u.pathname.split('/').pop();
     if(DEFAULT_PROFILE_IDS.has(pid))return send(res,400,{error:'Default profiles cannot be deleted'});
     if(db.users.some(x=>x.profileId===pid))return send(res,409,{error:'Profile is assigned to users'});
-    const p=db.profiles.find(x=>x.id===pid); if(!p)return send(res,404,{error:'Profile not found'}); db.profiles=db.profiles.filter(x=>x.id!==pid);
+    const p=db.profiles.find(x=>x.id===pid); if(!p)return send(res,404,{error:'Profile not found'}); for(const w of db.workflowConfig?.workflows||[])for(const item of [...(w.nodes||[]),...(w.objects||[])])if(item.permissions){delete item.permissions[pid];delete item.permissions[p.name]} db.profiles=db.profiles.filter(x=>x.id!==pid);
     audit(db,user,`Deleted role profile ${p.name}`,{entityType:'profile',entityId:pid}); write(db); return send(res,200,{ok:true});
   }
 
