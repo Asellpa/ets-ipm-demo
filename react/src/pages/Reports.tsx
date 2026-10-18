@@ -1,7 +1,8 @@
 import {useMemo,useState} from 'react';
+import ImportTracker from './ImportTracker';
 import type {Session} from '../api';
 
-export default function Reports({data}:{data:Session}){
+export default function Reports({data,onRefresh}:{data:Session;onRefresh:()=>Promise<void>}){
  const[client,setClient]=useState('');const[sector,setSector]=useState('');const[release,setRelease]=useState('');const[from,setFrom]=useState('');const[to,setTo]=useState('');const[flagged,setFlagged]=useState(false);const[rate,setRate]=useState(0);const[projectId,setProjectId]=useState('all');
  const[status,setStatus]=useState('all');
  const[assignee,setAssignee]=useState('all');
@@ -30,6 +31,7 @@ export default function Reports({data}:{data:Session}){
   <div className="panel"><div className="toolbar"><h2>Task report</h2>{data.permissions.exportData&&<><button type="button" onClick={downloadFiltered}>Export filtered CSV</button><a href="/api/export.json" download>Export complete data JSON</a><a className="export-link" href="/api/export.csv" download>Export full tracker CSV</a></>}</div>
   {tasks.length===0?<p>No tasks match these filters.</p>:<table><thead><tr><th>Project</th><th>Task</th><th>Assignee</th><th>Status</th><th>Estimated MH</th><th>Actual MH</th></tr></thead><tbody>{tasks.map(t=><tr key={t.id}><td>{projectName(t.projectId)}</td><td>{t.title}</td><td>{t.assignee||'Unassigned'}</td><td>{t.status||'Unknown'}</td><td>{t.mhEstimate??0}</td><td>{t.mhActual??0}</td></tr>)}</tbody></table>}</div>
  {data.permissions.viewCommercialFields&&<section className="panel"><h2>Management profitability</h2><p>Enter an hourly cost in the same currency as numeric project pricing. Text quotes are excluded from margin calculations.</p><label>Hourly labour cost<input type="number" min="0" value={rate} onChange={e=>setRate(Number(e.target.value))}/></label><table><thead><tr><th>Project</th><th>Quoted price</th><th>Actual MH</th><th>Labour cost</th><th>Margin before other costs</th></tr></thead><tbody>{projects.filter(p=>p.type==='commercial'&&(projectId==='all'||p.id===projectId)).map(p=>{const hours=tasks.filter(t=>t.projectId===p.id).reduce((sum,t)=>sum+Number(t.mhActual||0),0);const raw=p.pricing?.rom||'';const price=raw.trim()&&Number.isFinite(Number(raw))?Number(raw):null;return <tr key={p.id}><td>{p.title}</td><td>{raw||'Not quoted'}</td><td>{hours}</td><td>{rate?(hours*rate).toFixed(2):'Set hourly cost'}</td><td>{price!==null&&rate?(price-hours*rate).toFixed(2):'Unavailable'}</td></tr>})}</tbody></table></section>}
+ {data.permissions.importData&&<ImportTracker onImported={onRefresh}/>}
  </>;
 }
 

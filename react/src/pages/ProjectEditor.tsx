@@ -55,9 +55,9 @@ export default function ProjectEditor({project,canCommercial,canEer,canViewComme
   <h2>{project?'Edit project':'Create project'}</h2>
   <label>Project type<select disabled={Boolean(project)} value={type} onChange={e=>setType(e.target.value)}>{canCommercial&&<option value="commercial">Commercial RFQ</option>}{canEer&&<option value="internal_eer">Internal EER</option>}</select></label>
   <label>Project title<input required maxLength={200} value={values.title} onChange={e=>set('title',e.target.value)}/></label>
-  <label>Stage<input value={values.stage} onChange={e=>set('stage',e.target.value)}/></label>
+  <label>Stage<input disabled={type==='commercial'&&!canViewCommercialFields} value={values.stage} onChange={e=>set('stage',e.target.value)}/></label>
   <h3>Project details</h3>
-  {fields.map(field=><label key={field.key}>{field.label}{field.kind==='textarea'?<textarea value={values[field.key]||''} onChange={e=>set(field.key,e.target.value)}/>:<input type={field.kind==='date'?'date':'text'} value={values[field.key]||''} onChange={e=>set(field.key,e.target.value)}/>}</label>)}
+  {fields.map(field=><label key={field.key}>{field.label}{field.kind==='textarea'?<textarea value={values[field.key]||''} onChange={e=>set(field.key,e.target.value)}/>:<input disabled={field.key==='status'&&type==='commercial'&&!canViewCommercialFields} type={field.kind==='date'?'date':'text'} value={values[field.key]||''} onChange={e=>set(field.key,e.target.value)}/>}</label>)}
   {type==='commercial'&&canViewCommercialFields&&<><h3>Restricted commercial information</h3>{pricingFields.map(field=><label key={field.key}>{field.label}<textarea value={values[field.key]||''} onChange={e=>set(field.key,e.target.value)}/></label>)}</>}
   {error&&<p role="alert" className="error">{error}</p>}
   <div className="toolbar"><button type="button" onClick={onCancel}>Cancel</button><button type="submit" disabled={busy||!values.title.trim()}>{busy?'Saving…':'Save project'}</button></div>

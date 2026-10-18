@@ -83,7 +83,7 @@ function normalize(db){
   return db;
 }
 const read = () => normalize(JSON.parse(fs.readFileSync(DB,'utf8')));
-const write = db => fs.writeFileSync(DB, JSON.stringify(normalize(db), null, 2));
+const write = db => {const temp=DB+'.tmp';fs.writeFileSync(temp,JSON.stringify(normalize(db),null,2));fs.renameSync(temp,DB);};
 function body(req){ return new Promise((resolve,reject)=>{ let s=''; req.on('data',c=>{ s+=c; if(s.length>5e6) req.destroy(); }); req.on('end',()=>{ try{ resolve(s?JSON.parse(s):{}); }catch(e){ reject(e); } }); req.on('error',reject); }); }
 function cookies(req){ return Object.fromEntries(String(req.headers.cookie||'').split(';').map(v=>v.trim()).filter(Boolean).map(v=>{ const i=v.indexOf('='); return [decodeURIComponent(v.slice(0,i)),decodeURIComponent(v.slice(i+1))]; })); }
 function sessionOf(req){ const t=cookies(req).ets_session,s=t&&sessions.get(t);if(s&&Date.now()-s.createdAt>28800000){sessions.delete(t);return null}return s; }
@@ -112,8 +112,10 @@ function activeAdminCount(db){ return db.users.filter(u=>u.active && profileOf(d
 function profileExists(db,pid){ return db.profiles.some(p=>p.id===pid); }
 function uniqueUserConflict(db,uid,username,userId){ return db.users.some(x=>x.id!==uid && (String(x.username||'').toLowerCase()===String(username||'').trim().toLowerCase() || String(x.userId||'')===String(userId||'').trim())); }
 
-const server = http.createServer(async(req,res)=>{ try{
+let mutationQueue=Promise.resolve();
+const server = http.createServer(async(req,res)=>{ let release;try{
   const u = new URL(req.url,'http://localhost');
+  if(u.pathname.startsWith('/api/')&&!['GET','HEAD'].includes(req.method)){const previous=mutationQueue;mutationQueue=new Promise(resolve=>{release=resolve});await previous;}
 
   if(req.method==='POST'&&u.pathname==='/api/login'){
     const b=await body(req), db=read(), login=String(b.user||'').trim().toLowerCase(), uid=String(b.id||'').trim();
@@ -192,7 +194,7 @@ const server = http.createServer(async(req,res)=>{ try{
   if(req.method==='PATCH'&&/^\/api\/admin\/users\/[^/]+$/.test(u.pathname)){
     if(!ps.manageUsers)return send(res,403,{error:'Manage Users permission required'});
     const uid=u.pathname.split('/').pop(), target=db.users.find(x=>x.id===uid); if(!target)return send(res,404,{error:'User not found'});
-    const b=await body(req), before=structuredClone(target);
+    const b=await body(req), before=structuredClone(target);if(Object.hasOwn(b,'capacity')&&(!Number.isFinite(Number(b.capacity))||Number(b.capacity)<=0||Number(b.capacity)>24))return send(res,422,{error:'Daily capacity must be greater than zero and at most 24'});
     const nextUsername=Object.hasOwn(b,'username')?String(b.username).trim():target.username, nextUserId=Object.hasOwn(b,'userId')?String(b.userId).trim():target.userId;
     if(!nextUsername||!nextUserId)return send(res,400,{error:'Username and User ID are required'});
     if(uniqueUserConflict(db,uid,nextUsername,nextUserId))return send(res,409,{error:'Username or User ID already exists'});
@@ -202,7 +204,7 @@ const server = http.createServer(async(req,res)=>{ try{
     if(target.id===user.id&&(wouldDeactivate||wouldLoseAdmin))return send(res,400,{error:'You cannot deactivate your own account or remove your own administrator access'});
     if(target.active&&profileOf(db,target)?.permissions?.manageUsers&&profileOf(db,target)?.permissions?.manageRoles&&(wouldDeactivate||wouldLoseAdmin)&&activeAdminCount(db)<=1)return send(res,400,{error:'At least one active administrator must remain'});
     for(const k of ['name','username','userId','email','position','profileId'])if(Object.hasOwn(b,k))target[k]=String(b[k]).trim();
-    if(Object.hasOwn(b,'capacity'))target.capacity=Number(b.capacity||8); if(Object.hasOwn(b,'active'))target.active=!!b.active;
+    if(Object.hasOwn(b,'capacity'))target.capacity=Number(b.capacity); if(Object.hasOwn(b,'active'))target.active=!!b.active;
     const changes=diff(before,target,['name','username','userId','email','position','profileId','capacity','active']);
     if(changes.length)audit(db,user,`Updated user ${target.name}: ${changes.map(c=>c.field).join(', ')}`,{entityType:'user',entityId:target.id,changes}); write(db); return send(res,200,{ok:true});
   }
@@ -330,8 +332,8 @@ const server = http.createServer(async(req,res)=>{ try{
     if(uniqueUserConflict(db,null,nu.username,nu.userId))return send(res,409,{error:'Username or User ID already exists'}); db.users.push(nu); audit(db,user,`Added team member ${nu.name}`,{entityType:'user',entityId:nu.id}); write(db); return send(res,201,{ok:true,id:nu.id});
   }
   if(req.method==='PATCH'&&/^\/api\/users\/[^/]+$/.test(u.pathname)){
-    if(!ps.manageTeam)return send(res,403,{error:'Manage Team permission required'}); const uid=u.pathname.split('/').pop(), target=db.users.find(x=>x.id===uid); if(!target)return send(res,404,{error:'User not found'}); const b=await body(req),before=structuredClone(target);
-    for(const k of ['name','email','position'])if(Object.hasOwn(b,k))target[k]=String(b[k]).trim(); if(Object.hasOwn(b,'capacity'))target.capacity=Number(b.capacity||8); if(Object.hasOwn(b,'active'))target.active=!!b.active;
+    if(!ps.manageTeam)return send(res,403,{error:'Manage Team permission required'}); const uid=u.pathname.split('/').pop(), target=db.users.find(x=>x.id===uid); if(!target)return send(res,404,{error:'User not found'}); const b=await body(req),before=structuredClone(target);if(Object.hasOwn(b,'capacity')&&(!Number.isFinite(Number(b.capacity))||Number(b.capacity)<=0||Number(b.capacity)>24))return send(res,422,{error:'Daily capacity must be greater than zero and at most 24'});
+    for(const k of ['name','email','position'])if(Object.hasOwn(b,k))target[k]=String(b[k]).trim(); if(Object.hasOwn(b,'capacity'))target.capacity=Number(b.capacity); if(Object.hasOwn(b,'active'))target.active=!!b.active;
     const changes=diff(before,target,['name','email','position','capacity','active']); if(changes.length)audit(db,user,`Updated team member ${target.name}`,{entityType:'user',entityId:uid,changes}); write(db); return send(res,200,{ok:true});
   }
   if(req.method==='DELETE'&&/^\/api\/users\/[^/]+$/.test(u.pathname)){
@@ -341,6 +343,11 @@ const server = http.createServer(async(req,res)=>{ try{
 
   if(req.method==='POST'&&u.pathname==='/api/import'){
     if(!ps.importData)return send(res,403,{error:'Import permission required'}); if(!ps.createCommercial||!ps.createTasks)return send(res,403,{error:'Commercial creation and task permissions required for tracker import'}); const b=await body(req); const rows=Array.isArray(b.rows)?b.rows:[]; if(!rows.length)return send(res,400,{error:'No rows supplied'});
+    if(rows.length>10000)return send(res,422,{error:'Import limit is 10000 rows'});
+    const knownRoots=new Set(db.projects.map(p=>String(p.wbs)));const incoming=new Set();
+    for(const [i,row] of rows.entries()){const wbs=String(row.WBS??row.wbs??'').trim(),level=Number(row.Level??row.level??0);if(!wbs||![1,2,3].includes(level)||incoming.has(wbs))return send(res,422,{error:'Invalid or duplicate WBS / Level on row '+(i+2)});incoming.add(wbs);if(level===1)knownRoots.add(wbs);for(const k of ['MH Estimations','Actual MH','mhEstimate','mhActual'])if(Object.hasOwn(row,k)&&(!Number.isFinite(Number(row[k]))||Number(row[k])<0))return send(res,422,{error:'Invalid man-hours on row '+(i+2)});}
+    for(const [i,row]of rows.entries()){const wbs=String(row.WBS??row.wbs).trim();if(Number(row.Level??row.level)>1&&!knownRoots.has(wbs.split('.')[0]))return send(res,422,{error:'Unknown project WBS on row '+(i+2)});}
+    rows.sort((a,b)=>Number(a.Level??a.level)-Number(b.Level??b.level));
     const createdProjects=new Map(); let projectsAdded=0,tasksAdded=0;
     for(const row of rows){ const wbs=String(row.WBS??row.wbs??'').trim(), level=Number(row.Level??row.level??0); if(!wbs)continue;
       if(level===1){ const existing=db.projects.find(p=>String(p.wbs)===wbs); if(existing){createdProjects.set(wbs,existing);continue;} const p={id:id('p'),wbs,type:'commercial',client:String(row.CLIENT??row.Client??''),title:String(row.Project??row.project??row.Details??'Imported project'),aircraft:String(row.Aircraft??''),registration:String(row['A/C Reg']??''),releaseType:String(row['MRO Release']??''),sector:String(row['ETS Sub-Dept']??''),owner:String(row.Owner??''),priority:String(row.Priority??'Normal'),stage:String(row.Stage??row.Status??'RFQ'),status:String(row.Status??'RFQ'),scope:String(row['DOA Scope']??''),startDate:String(row['Start Date']??new Date().toISOString().slice(0,10)),remarks:String(row.Remarks??''),pricing:{}}; db.projects.push(p); createdProjects.set(wbs,p); projectsAdded++; }
@@ -386,7 +393,7 @@ const server = http.createServer(async(req,res)=>{ try{
   if(!file.startsWith(path.join(ROOT,'public')))return send(res,403,'Forbidden','text/plain');
   if(fs.existsSync(file)&&fs.statSync(file).isFile()){res.writeHead(200,{'Content-Type':mime(file),'Cache-Control':'no-store'});return fs.createReadStream(file).pipe(res);}
   return send(res,404,'Not found','text/plain');
-}catch(e){console.error(e);return send(res,500,{error:e.message||'Server error'});}});
+}catch(e){console.error(e);return send(res,500,{error:e.message||'Server error'});}finally{release?.()}});
 
 server.listen(PORT,'0.0.0.0',()=>console.log(`ETS IPM running on port ${PORT}`));
 

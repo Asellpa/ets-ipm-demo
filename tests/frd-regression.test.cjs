@@ -29,6 +29,11 @@ test('FRD permissions, ownership, notifications, capacity, workflow, export and 
  const mb=(await call(manager,'/bootstrap')).data;assert.ok(mb.escalations.some(e=>e.taskId===tid&&e.reason==='Missing client data'));assert.ok(mb.audit.some(a=>a.entityId===tid&&a.changes?.some(c=>c.field==='mhActual')));
  const eer=await call(engineer,'/projects','POST',{title:'Engineering request',type:'internal_eer'});assert.equal(eer.status,201);assert.ok((await call(lead,'/bootstrap')).data.notifications.some(n=>n.text.includes('New Internal EER')));
  assert.equal((await call(admin,'/projects/'+eer.data.project.id,'PATCH',{startDate:'2026-10-20'})).status,200);
+ const beforeImport=(await call(admin,'/bootstrap')).data.projects.length;
+ assert.equal((await call(admin,'/import','POST',{rows:[{WBS:'IMPORT-X',Level:1,Project:'Import project'},{WBS:'UNKNOWN.1',Level:3,Details:'Bad parent'}]})).status,422);
+ assert.equal((await call(admin,'/bootstrap')).data.projects.length,beforeImport,'Invalid import must not partially write');
+ const imported=await call(admin,'/import','POST',{rows:[{WBS:'IMPORT-X',Level:1,Project:'Import project'},{WBS:'IMPORT-X.1',Level:2,Details:'Package'},{WBS:'IMPORT-X.1.1',Level:3,Details:'Task','MH Estimations':'4'}]});assert.equal(imported.status,200);assert.equal(imported.data.projectsAdded,1);assert.equal(imported.data.tasksAdded,2);
+ const concurrent=await Promise.all(['Parallel A','Parallel B'].map(title=>call(admin,'/projects','POST',{title,type:'internal_eer'})));assert.ok(concurrent.every(r=>r.status===201));const afterConcurrent=(await call(admin,'/bootstrap')).data;for(const title of ['Parallel A','Parallel B'])assert.ok(afterConcurrent.projects.some(p=>p.title===title),'Concurrent write lost '+title);
  const wp=await call(admin,'/work-packages','POST',{projectId:pid,title:'Engineering package',assignee:'Engineer',mhEstimate:100,startDate:'2026-10-19'});assert.equal(wp.status,201);
  let cap=(await call(admin,'/capacity?start=2026-10-19&days=7')).data.rows.find(r=>r.user==='Engineer');assert.equal(cap.cells[0].booked,6,'Package totals must not double-count task allocation');assert.equal(cap.cells[5].capacity,0);
  assert.equal((await call(engineer,'/leave','POST',{user:'Engineer',date:'2026-10-19'})).status,403);
