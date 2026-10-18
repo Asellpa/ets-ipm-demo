@@ -21,6 +21,16 @@ const PERMS = [
   'manageSettings','manageUsers','manageRoles'
 ];
 
+// Permission values must be booleans; coercing strings such as "false" grants access.
+function profilePermissionError(value){
+  if(value===undefined)return '';
+  if(!value||typeof value!=='object'||Array.isArray(value))return 'Permissions must be an object of boolean values';
+  for(const [key,enabled] of Object.entries(value)){
+    if(!PERMS.includes(key))return 'Unknown permission: '+key;
+    if(typeof enabled!=='boolean')return 'Permission '+key+' must be true or false';
+  }
+  return '';
+}
 const fullPermissions = () => Object.fromEntries(PERMS.map(k => [k, true]));
 const DEFAULT_PROFILES = [
   { id:'prof-admin', name:'System Administrator', description:'Full application and administration access', permissions:fullPermissions() },
@@ -229,6 +239,7 @@ const server = http.createServer(async(req,res)=>{ let release;try{
   }
   if(req.method==='POST'&&u.pathname==='/api/admin/profiles'){
     if(!ps.manageRoles)return send(res,403,{error:'Manage Roles permission required'}); const b=await body(req);
+    const permissionError=profilePermissionError(b.permissions);if(permissionError)return send(res,400,{error:permissionError});
     if(!String(b.name||'').trim())return send(res,400,{error:'Profile name is required'});
     if(db.profiles.some(p=>p.name.toLowerCase()===String(b.name).trim().toLowerCase()))return send(res,409,{error:'Profile name already exists'});
     const p={id:id('prof'),name:String(b.name).trim(),description:String(b.description||'').trim(),permissions:Object.fromEntries(PERMS.map(k=>[k,!!b.permissions?.[k]]))};
@@ -238,6 +249,7 @@ const server = http.createServer(async(req,res)=>{ let release;try{
     if(!ps.manageRoles)return send(res,403,{error:'Manage Roles permission required'});
     const pid=u.pathname.split('/').pop(), p=db.profiles.find(x=>x.id===pid); if(!p)return send(res,404,{error:'Profile not found'});
     const b=await body(req), before=structuredClone(p);
+    const permissionError=profilePermissionError(b.permissions);if(permissionError)return send(res,400,{error:permissionError});
     if(DEFAULT_PROFILE_IDS.has(pid) && pid==='prof-admin'){
       if(Object.hasOwn(b,'name')&&String(b.name).trim()!==p.name)return send(res,400,{error:'System Administrator profile name is protected'});
       if(b.permissions&&PERMS.some(k=>b.permissions[k]===false))return send(res,400,{error:'System Administrator permissions are protected'});
@@ -268,7 +280,8 @@ const server = http.createServer(async(req,res)=>{ let release;try{
   }
   if(req.method==='PATCH'&&/^\/api\/projects\/[^/]+$/.test(u.pathname)){
     if(!ps.editProjects)return send(res,403,{error:'Edit Projects permission required'}); const pid=u.pathname.split('/').pop(), p=project(db,pid); if(!p)return send(res,404,{error:'Project not found'});
-    if(p.type==='commercial'&&(!ps.viewCommercial||p.stage==='RFQ'&&!ps.viewRFQEngineering))return send(res,403,{error:'Commercial access required'}); const b=await body(req), before=structuredClone(p); if(p.type==='commercial'&&!ps.viewCommercialFields&&['rom','poStatus','negotiationNotes','offerDetails','agreementDetails','pricing','stage','status'].some(k=>Object.hasOwn(b,k)))return send(res,403,{error:'Commercial fields and handover require management permission'}); const fields=['client','title','aircraft','registration','releaseType','sector','owner','priority','stage','status','scope','edd','startDate','requiredInputs','deliverables','clientFocal','doaFocal','projectManager','site','sage','nreStatus','remarks'];
+    if(p.type==='commercial'&&(!ps.viewCommercial||p.stage==='RFQ'&&!ps.viewRFQEngineering))return send(res,403,{error:'Commercial access required'}); const b=await body(req), before=structuredClone(p);
+    const permissionError=profilePermissionError(b.permissions);if(permissionError)return send(res,400,{error:permissionError}); if(p.type==='commercial'&&!ps.viewCommercialFields&&['rom','poStatus','negotiationNotes','offerDetails','agreementDetails','pricing','stage','status'].some(k=>Object.hasOwn(b,k)))return send(res,403,{error:'Commercial fields and handover require management permission'}); const fields=['client','title','aircraft','registration','releaseType','sector','owner','priority','stage','status','scope','edd','startDate','requiredInputs','deliverables','clientFocal','doaFocal','projectManager','site','sage','nreStatus','remarks'];
     for(const k of fields)if(Object.hasOwn(b,k))p[k]=b[k]; if(p.type==='commercial'&&ps.viewCommercialFields){ p.pricing||={}; for(const k of ['rom','poStatus','negotiationNotes','offerDetails','agreementDetails'])if(Object.hasOwn(b,k))p.pricing[k]=b[k]; }
     const changes=diff(before,p,fields.concat(['pricing'])); if(changes.length)audit(db,user,`Updated project ${p.wbs}: ${changes.map(c=>c.field).join(', ')}`,{entityType:'project',entityId:p.id,projectId:p.id,changes}); write(db); return send(res,200,{ok:true,project:safeProject(p,ps)});
   }

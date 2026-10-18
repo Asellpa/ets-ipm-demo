@@ -9,6 +9,15 @@ test('FRD permissions, ownership, notifications, capacity, workflow, export and 
  const call=async(cookie,route,method='GET',body)=>{const r=await fetch(`http://127.0.0.1:${port}/api${route}`,{method,headers:{Cookie:cookie||'','Content-Type':'application/json'},body:body===undefined?undefined:JSON.stringify(body)});const text=await r.text();let data;try{data=JSON.parse(text)}catch{data=text}return {status:r.status,data,cookie:r.headers.get('set-cookie')?.split(';')[0]}};
  const login=async(name,id)=>{const r=await call('','/login','POST',{user:name,id,password:'Testing'});assert.equal(r.status,200);return r.cookie};
  try{await start();let admin=await login('Stephan','123');
+ for(const permissions of [{manageRoles:'false'},{manageUsers:1},{unknownPermission:true},[],null]){
+  assert.equal((await call(admin,'/admin/profiles','POST',{name:'Invalid profile',permissions})).status,400);
+  assert.equal((await call(admin,'/admin/profiles/prof-senior','PATCH',{permissions})).status,400);
+ }
+ const custom=await call(admin,'/admin/profiles','POST',{name:'Permission validation',permissions:{manageRoles:false,viewReports:true}});assert.equal(custom.status,201);
+ let profiles=(await call(admin,'/admin/profiles')).data.profiles;assert.equal(profiles.find(p=>p.id===custom.data.id).permissions.manageRoles,false);
+ assert.equal((await call(admin,'/admin/profiles/prof-admin','PATCH',{permissions:{manageRoles:false}})).status,400);
+ assert.equal((await call(admin,'/admin/profiles/'+custom.data.id,'DELETE')).status,200);
+
  for(const [name,profileId] of [['Lead','prof-ltse'],['Engineer','prof-tse'],['Other','prof-tse'],['Manager','prof-senior']]){const r=await call(admin,'/admin/users','POST',{name,username:name,userId:name,password:'Testing',profileId});assert.equal(r.status,201,JSON.stringify(r.data))}
  const lead=await login('Lead','Lead'),engineer=await login('Engineer','Engineer'),other=await login('Other','Other'),manager=await login('Manager','Manager');
  const project=await call(admin,'/projects','POST',{title:'FRD RFQ',type:'commercial',rom:'SECRET_PRICE',stage:'RFQ'});const pid=project.data.project.id;

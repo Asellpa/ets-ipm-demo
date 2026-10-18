@@ -1,35 +1,25 @@
-import {useCallback,useEffect,useState,type FormEvent} from 'react';
+import {useCallback,useEffect,useRef,useState,type FormEvent} from 'react';
 import {request} from '../api';
-
+import {permissionLabels} from './permissionLabels';
 type Profile={id:string;name:string;description:string;permissions:Record<string,boolean>};
 type Response={profiles:Profile[];permissions:string[]};
+const builtIn=new Set(['prof-admin','prof-senior','prof-ltse','prof-tse']);
+const groups=[{name:'Projects & commercial access',keys:['viewCommercial','createCommercial','viewCommercialFields','viewRFQEngineering','createEER','editProjects','deleteProjects']},{name:'Tasks & engineering',keys:['createTasks','assignTasks','updateActualMH','raiseEscalations']},{name:'Resources',keys:['viewCapacity','manageLeave','manageTeam']},{name:'Reporting & data',keys:['viewReports','exportData','importData','viewAudit']},{name:'Administration',keys:['manageSettings','manageUsers','manageRoles']}];
+function ProfileEditor({profile,permissions,onClose,onSave,onDelete}:{profile:Profile;permissions:string[];onClose:()=>void;onSave:(p:Profile)=>Promise<void>;onDelete:()=>Promise<void>}){
+ const [draft,setDraft]=useState(()=>({...profile,permissions:{...profile.permissions}}));const[busy,setBusy]=useState(false);const[error,setError]=useState('');const dialog=useRef<HTMLDialogElement>(null);const protectedProfile=draft.id==='prof-admin';
+ useEffect(()=>{const el=dialog.current;el?.showModal();return()=>el?.close()},[]);
+ async function save(e:FormEvent){e.preventDefault();setBusy(true);setError('');try{await onSave({...draft,name:draft.name.trim()})}catch(e){setError((e as Error).message)}finally{setBusy(false)}}
+ const warnings=[];
+ if(!draft.permissions.viewCommercial&&['createCommercial','viewCommercialFields','viewRFQEngineering'].some(k=>draft.permissions[k]))warnings.push('Commercial permissions require View Commercial Projects to access existing commercial records.');
+ if(draft.permissions.manageLeave&&!draft.permissions.viewCapacity)warnings.push('Enable View Capacity to access the leave editor in Resource Planning.');
+ if(draft.permissions.importData&&(!draft.permissions.createCommercial||!draft.permissions.createTasks))warnings.push('Tracker import also requires Create Commercial Projects and Create Tasks / Work Packages.');
+ if(draft.permissions.importData&&!draft.permissions.viewReports)warnings.push('The React import screen is under Reports; enable View Management Reports to access it.');
+ return <dialog ref={dialog} className="profile-dialog" aria-labelledby="profile-editor-title" onCancel={e=>{e.preventDefault();if(!busy)onClose()}}><form onSubmit={e=>void save(e)}><div className="toolbar"><h2 id="profile-editor-title">{draft.id?'Manage Role Profile':'Create Role Profile'}</h2><button type="button" disabled={busy} aria-label="Close permission editor" onClick={onClose}>×</button></div><p className="muted">Profiles control application access. Assign them to users under Manage Users.</p>{protectedProfile&&<p className="permission-note">System Administrator is protected and always retains full access. Duplicate it to create a custom profile.</p>}<div className="profile-fields"><label>Profile Name<input autoFocus required maxLength={120} disabled={busy||protectedProfile} value={draft.name} onChange={e=>setDraft({...draft,name:e.target.value})}/></label><label>Description<input disabled={busy} maxLength={500} value={draft.description} onChange={e=>setDraft({...draft,description:e.target.value})}/></label></div><h3>Application Permissions</h3>{groups.map(g=><fieldset className="permission-group" key={g.name}><legend>{g.name}</legend><div className="role-permissions">{g.keys.filter(k=>permissions.includes(k)).map(k=><label className="role-permission" key={k}><input type="checkbox" disabled={busy||protectedProfile} checked={Boolean(draft.permissions[k])} onChange={e=>setDraft({...draft,permissions:{...draft.permissions,[k]:e.target.checked}})}/><span><strong>{permissionLabels[k]?.label||k}</strong><small>{permissionLabels[k]?.help}</small></span></label>)}</div></fieldset>)}{warnings.length>0&&<aside className="permission-note" aria-label="Permission guidance"><strong>Check these selections</strong><ul>{warnings.map(w=><li key={w}>{w}</li>)}</ul><p>Access to pricing and pre-handover RFQ engineering are separate permissions.</p></aside>}{error&&<p role="alert" className="error">{error}</p>}<div className="profile-actions">{draft.id&&!builtIn.has(draft.id)&&<button type="button" className="danger" disabled={busy} onClick={async()=>{if(!window.confirm('Delete this profile? Assigned profiles cannot be deleted.'))return;setBusy(true);try{await onDelete()}catch(e){setError((e as Error).message)}finally{setBusy(false)}}}>Delete Profile</button>}<button type="button" disabled={busy} onClick={onClose}>Cancel</button><button className="primary" disabled={busy||!draft.name.trim()}>{busy?'Saving…':'Save Profile'}</button></div></form></dialog>
+}
 export default function Roles(){
- const[profiles,setProfiles]=useState<Profile[]>([]);
- const[permissionNames,setPermissionNames]=useState<string[]>([]);
- const[selected,setSelected]=useState<string>('');
- const[draft,setDraft]=useState<Profile|null>(null);
- const[error,setError]=useState('');
- const[busy,setBusy]=useState(false);
- const load=useCallback(async()=>{
-  try{const result=await request<Response>('/admin/profiles');setProfiles(result.profiles);setPermissionNames(result.permissions);setSelected(current=>current||result.profiles[0]?.id||'')}
-  catch(e){setError((e as Error).message)}
- },[]);
- useEffect(()=>{void load()},[load]);
- useEffect(()=>{const p=profiles.find(p=>p.id===selected);setDraft(p?{...p,permissions:{...p.permissions}}:null)},[profiles,selected]);
- async function save(e:FormEvent){e.preventDefault();if(!draft)return;setBusy(true);setError('');
-  try{await request(draft.id?'/admin/profiles/'+encodeURIComponent(draft.id):'/admin/profiles',{method:draft.id?'PATCH':'POST',body:JSON.stringify({name:draft.name,description:draft.description,permissions:draft.permissions})});await load();if(!draft.id)setSelected('')}
-  catch(e){setError((e as Error).message)}finally{setBusy(false)}
- }
- async function remove(){if(!draft?.id||!window.confirm('Delete this role?'))return;setBusy(true);setError('');
-  try{await request('/admin/profiles/'+encodeURIComponent(draft.id),{method:'DELETE'});setSelected('');await load()}
-  catch(e){setError((e as Error).message)}finally{setBusy(false)}
- }
- return <div className="panel"><div className="toolbar"><h2>Role Management</h2><button onClick={()=>{setSelected('');setDraft({id:'',name:'',description:'',permissions:{}})}}>+ New role</button></div>
- {error&&<p className="error" role="alert">{error}</p>}
- <div className="toolbar"><label>Role profile <select value={selected} onChange={e=>setSelected(e.target.value)}><option value="">New role</option>{profiles.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}</select></label></div>
- {draft&&<form onSubmit={e=>void save(e)}><label>Role name<input required value={draft.name} onChange={e=>setDraft({...draft,name:e.target.value})}/></label>
- <label>Description<input value={draft.description||''} onChange={e=>setDraft({...draft,description:e.target.value})}/></label>
- <h3>Permissions</h3><div className="permission-grid">{permissionNames.map(k=><label key={k}><input type="checkbox" checked={Boolean(draft.permissions[k])} disabled={draft.id==='prof-admin'} onChange={e=>setDraft({...draft,permissions:{...draft.permissions,[k]:e.target.checked}})}/> {k.replace(/([A-Z])/g,' $1')}</label>)}</div>
- <div className="toolbar"><button disabled={busy} type="submit">{busy?'Saving…':'Save role'}</button>{draft.id&&!['prof-admin','prof-senior','prof-ltse','prof-tse'].includes(draft.id)&&<button disabled={busy} type="button" onClick={()=>void remove()}>Delete role</button>}</div></form>}
- </div>
+ const[profiles,setProfiles]=useState<Profile[]>([]);const[permissions,setPermissions]=useState<string[]>([]);const[draft,setDraft]=useState<Profile|null>(null);const[error,setError]=useState('');const[message,setMessage]=useState('');const[loading,setLoading]=useState(true);
+ const load=useCallback(async()=>{const result=await request<Response>('/admin/profiles');setProfiles(result.profiles);setPermissions(result.permissions)},[]);
+ useEffect(()=>{load().catch(e=>setError((e as Error).message)).finally(()=>setLoading(false))},[load]);
+ async function save(p:Profile){await request(p.id?'/admin/profiles/'+encodeURIComponent(p.id):'/admin/profiles',{method:p.id?'PATCH':'POST',body:JSON.stringify({name:p.name,description:p.description,permissions:p.permissions})});await load();setDraft(null);setMessage('Role profile saved')}
+ return <section className="panel"><div className="toolbar"><div><h2>Permission Profiles</h2><p className="muted">Profiles are reusable permission sets. Assign a profile to a user under Manage Users.</p></div><button className="primary" disabled={loading} onClick={()=>{setMessage('');setDraft({id:'',name:'',description:'',permissions:{}})}}>+ Create Profile</button></div>{error&&<p role="alert" className="error">{error}</p>}{message&&<p role="status">{message}</p>}{loading?<p>Loading permission profiles…</p>:<div className="profile-cards">{profiles.map(p=><article className="profile-card" key={p.id}><h3>{p.name}</h3><p className="muted">{p.description||'No description'}</p><p><strong>{permissions.filter(k=>p.permissions[k]===true).length}</strong> permissions enabled</p><div><button onClick={()=>{setMessage('');setDraft(p)}}>Manage Permissions</button><button onClick={()=>{setMessage('');setDraft({...p,id:'',name:p.name+' copy',permissions:{...p.permissions}})}}>Duplicate</button></div></article>)}</div>}{draft&&<ProfileEditor key={draft.id||'new'} profile={draft} permissions={permissions} onClose={()=>setDraft(null)} onSave={save} onDelete={async()=>{await request('/admin/profiles/'+encodeURIComponent(draft.id),{method:'DELETE'});await load();setDraft(null);setMessage('Role profile deleted')}}/>}</section>
 }
