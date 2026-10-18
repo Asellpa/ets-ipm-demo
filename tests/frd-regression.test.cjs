@@ -5,10 +5,12 @@ const ROOT=path.resolve(__dirname,'..');
 test('FRD permissions, ownership, notifications, capacity, workflow, export and persistence',async()=>{
  const working=path.join(ROOT,'data/db.json');const original=fs.existsSync(working)?fs.readFileSync(working):null;
  const dir=fs.mkdtempSync(path.join(os.tmpdir(),'ets-frd-'));fs.copyFileSync(path.join(ROOT,'data/seed.json'),path.join(dir,'seed.json'));const port=53000+Math.floor(Math.random()*1000);let server;
- const start=async()=>{server=spawn(process.execPath,[path.join(ROOT,'server.js')],{env:{...process.env,PORT:String(port),ETS_DATA_DIR:dir},stdio:'pipe'});for(let i=0;i<100;i++){try{await fetch(`http://127.0.0.1:${port}/`);return}catch{await new Promise(r=>setTimeout(r,50))}}throw Error('Server failed to start')};
+ const start=async()=>{server=spawn(process.execPath,[path.join(ROOT,'server.js')],{env:{...process.env,PORT:String(port),ETS_DATA_DIR:dir,TZ:'Asia/Colombo'},stdio:'pipe'});for(let i=0;i<100;i++){try{await fetch(`http://127.0.0.1:${port}/`);return}catch{await new Promise(r=>setTimeout(r,50))}}throw Error('Server failed to start')};
  const call=async(cookie,route,method='GET',body)=>{const r=await fetch(`http://127.0.0.1:${port}/api${route}`,{method,headers:{Cookie:cookie||'','Content-Type':'application/json'},body:body===undefined?undefined:JSON.stringify(body)});const text=await r.text();let data;try{data=JSON.parse(text)}catch{data=text}return {status:r.status,data,cookie:r.headers.get('set-cookie')?.split(';')[0]}};
  const login=async(name,id)=>{const r=await call('','/login','POST',{user:name,id,password:'Testing'});assert.equal(r.status,200);return r.cookie};
  try{await start();let admin=await login('Stephan','123');
+ const tzCapacity=await call(admin,'/capacity?start=2026-10-19&days=7');assert.equal(tzCapacity.data.rows[0].cells[0].date,'2026-10-19');assert.equal(tzCapacity.data.rows[0].cells[6].date,'2026-10-25');
+
  for(const permissions of [{manageRoles:'false'},{manageUsers:1},{unknownPermission:true},[],null]){
   assert.equal((await call(admin,'/admin/profiles','POST',{name:'Invalid profile',permissions})).status,400);
   assert.equal((await call(admin,'/admin/profiles/prof-senior','PATCH',{permissions})).status,400);

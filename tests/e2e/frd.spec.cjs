@@ -2,10 +2,10 @@ const {test,expect}=require('@playwright/test');
 async function login(page,user='Stephan',id='123'){await page.goto('/');await page.getByLabel('Username',{exact:true}).fill(user);await page.getByLabel('User ID',{exact:true}).fill(id);await page.getByLabel('Password',{exact:true}).fill('Testing');await page.getByRole('button',{name:'Sign in',exact:true}).click();await expect(page.getByRole('heading',{name:'Overview',level:1})).toBeVisible()}
 test('resource leave creation, reload, removal and daily capacity',async({page})=>{
  await login(page);await page.getByRole('button',{name:'Resource Planning',exact:true}).click();
- await page.getByLabel('Start date',{exact:true}).fill('2026-11-02');await page.getByLabel('Leave date',{exact:true}).fill('2026-11-02');await page.getByLabel('Team member',{exact:true}).selectOption({label:'Stephan'});await page.getByLabel('Leave type').selectOption('Training');await page.getByRole('button',{name:'Save leave',exact:true}).click();
+ await page.getByLabel('Start date',{exact:true}).fill('2026-11-02');await page.getByRole('button',{name:'+ Record leave',exact:true}).click();await page.getByLabel('Leave date',{exact:true}).fill('2026-11-02');await page.getByLabel('Team member',{exact:true}).selectOption({label:'Stephan'});await page.getByLabel('Leave type').selectOption('Training');await page.getByRole('button',{name:'Save leave',exact:true}).click();
  const record=page.getByRole('paragraph').filter({hasText:'Stephan · 2026-11-02 · Training'});await expect(record).toBeVisible();
- const row=page.getByRole('row').filter({has:page.getByRole('rowheader',{name:'Stephan',exact:true})});await expect(row).toContainText('Training');
- await page.reload();await page.getByRole('button',{name:'Resource Planning',exact:true}).click();await expect(record).toBeVisible();await record.getByRole('button',{name:'Remove leave'}).click();await expect(record).toHaveCount(0);
+ await page.getByRole('button',{name:'Capacity',exact:true}).click();const row=page.getByRole('row').filter({has:page.getByRole('rowheader',{name:/Stephan/})});await expect(row).toContainText('Training');
+ await page.reload();await page.getByRole('button',{name:'Resource Planning',exact:true}).click();await page.getByLabel('Start date',{exact:true}).fill('2026-11-02');await page.getByRole('button',{name:'Leave & availability',exact:true}).click();await expect(record).toBeVisible();await record.getByRole('button',{name:'Remove leave'}).click();await expect(record).toHaveCount(0);
 });
 test('workflow node editing persists and rejects cycles through API',async({page})=>{
  await login(page);await page.getByRole('button',{name:'Project Configuration',exact:true}).click();
