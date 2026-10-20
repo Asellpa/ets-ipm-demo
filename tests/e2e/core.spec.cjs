@@ -11,7 +11,7 @@ test('login, create internal project, create task, and verify persistence',async
  await login(page);
  await page.getByRole('button',{name:'Project Register'}).click();
  await page.getByRole('button',{name:'+ New project'}).click();
- await page.getByLabel('Project type').selectOption('internal_eer');
+ await page.getByLabel('Project type').selectOption('internal_eer');await expect(page.getByLabel('Workflow',{exact:true})).toHaveValue('eer');
  await page.getByLabel('Record name (optional)').fill('Playwright isolated project');
  await page.getByRole('button',{name:'Save project'}).click();
  await expect(page.getByText('Playwright isolated project')).toBeVisible();

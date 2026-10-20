@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, type FormEvent } from 'react';
+import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
 import { request, type Project, type Session, type Task } from '../api';
 import type { ObjectField } from './WorkflowFieldsEditor';
 type History = { action: string; comment: string; user: string; at: string };
@@ -41,11 +41,13 @@ function TaskRow({
   task,
   canAssign,
   canUpdate,
+  parentBusy,
   onSaved,
 }: {
   task: Task;
   canAssign: boolean;
   canUpdate: boolean;
+  parentBusy: boolean;
   onSaved: () => Promise<void>;
 }) {
   const [status, setStatus] = useState(task.status || 'To Do');
@@ -82,6 +84,7 @@ function TaskRow({
             Status
             <select
               aria-label={'Status for ' + task.title}
+              disabled={busy || parentBusy}
               value={status}
               onChange={(e) => setStatus(e.target.value)}
             >
@@ -97,6 +100,7 @@ function TaskRow({
               Actual hours
               <input
                 aria-label={'Actual hours for ' + task.title}
+                disabled={busy || parentBusy}
                 type="number"
                 min="0"
                 step="0.25"
@@ -105,7 +109,7 @@ function TaskRow({
               />
             </label>
           )}
-          <button disabled={busy}>Save task</button>
+          <button disabled={busy || parentBusy}>Save task</button>
         </>
       )}
       {error && (
@@ -130,6 +134,12 @@ function ObjectDetails({
   onChange: () => Promise<void>;
 }) {
   const [values, setValues] = useState(node.values || {});
+  const previousValues = useRef(JSON.stringify(node.values || {}));
+  useEffect(() => {
+    const previous = previousValues.current;
+    setValues((current) => (JSON.stringify(current) === previous ? node.values || {} : current));
+    previousValues.current = JSON.stringify(node.values || {});
+  }, [node.values]);
   const [comment, setComment] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
@@ -324,6 +334,7 @@ function ObjectDetails({
           <TaskRow
             key={task.id + ':' + task.status + ':' + task.mhActual}
             task={task}
+            parentBusy={busy}
             canAssign={node.canEdit && !!data.permissions.assignTasks}
             canUpdate={
               !task.workflowLocked &&
@@ -693,15 +704,7 @@ export default function ProjectWorkspace({
             </nav>
             {node ? (
               <ObjectDetails
-                key={
-                  node.id +
-                  ':' +
-                  Object.entries(node.values || {})
-                    .map(([k, v]) => k + v)
-                    .join('|') +
-                  ':' +
-                  node.status
-                }
+                key={node.id + ':' + node.status}
                 node={node}
                 instance={instance}
                 project={project}

@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from 'react';
+import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { request, type Project } from '../api';
 
 type Field = { key: string; label: string; kind?: 'date' | 'textarea' };
@@ -58,6 +58,7 @@ export default function ProjectEditor({
   const [workflowId, setWorkflowId] = useState(project?.workflowId || '');
   const [managerId, setManagerId] = useState(project?.managerId || '');
   const [supervisorId, setSupervisorId] = useState(project?.supervisorId || '');
+  const createType = useRef(project?.type || (canCommercial ? 'commercial' : 'internal_eer'));
   const existing = Boolean(project);
   useEffect(() => {
     let active = true;
@@ -72,9 +73,7 @@ export default function ProjectEditor({
           setLoaded(true);
           if (!existing) {
             setWorkflowId(
-              result.projectTypes?.find(
-                (t) => t.id === (canCommercial ? 'commercial' : 'internal_eer'),
-              )?.workflowId ||
+              result.projectTypes?.find((t) => t.id === createType.current)?.workflowId ||
                 result.workflows[0]?.id ||
                 '',
             );
@@ -88,7 +87,7 @@ export default function ProjectEditor({
     return () => {
       active = false;
     };
-  }, [canCommercial, existing]);
+  }, [existing]);
   const [type, setType] = useState(
     project?.type || (canCommercial ? 'commercial' : 'internal_eer'),
   );
@@ -172,6 +171,7 @@ export default function ProjectEditor({
           disabled={Boolean(project)}
           value={type}
           onChange={(e) => {
+            createType.current = e.target.value;
             setType(e.target.value);
             setWorkflowId(
               catalog.projectTypes?.find((t) => t.id === e.target.value)?.workflowId || '',

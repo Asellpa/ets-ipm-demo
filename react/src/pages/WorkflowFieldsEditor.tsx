@@ -246,6 +246,7 @@ export default function WorkflowFieldsEditor({
                   Choices (one per line)
                   <textarea
                     key={f.id + 'options'}
+                    aria-label="Choices (one per line)"
                     defaultValue={(f.options || []).join('\n')}
                     onBlur={(e) =>
                       update(f.id, {
