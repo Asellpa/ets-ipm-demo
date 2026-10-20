@@ -1,0 +1,32 @@
+const specifications=[
+ ['Application','ETS IPM · Demo'],
+ ['Purpose','Integrated project, task and resource management'],
+ ['Frontend','React 18 and TypeScript'],
+ ['Interface','Custom CSS with responsive layouts'],
+ ['Build tooling','Vite 5'],
+ ['Backend','Node.js and JavaScript, using the built-in HTTP server'],
+ ['API','REST-style HTTP endpoints with JSON'],
+ ['Data storage','Local JSON-file storage; no SQL or managed database is currently connected'],
+ ['Authentication','Application username, user ID and password'],
+ ['Password storage','Salted password hashes using scrypt'],
+ ['Sessions','Server-side, in-memory sessions with an eight-hour expiry'],
+ ['Access control','Reusable application permission profiles with server-side checks'],
+ ['Current hosting','Local demonstration shared through an HTTPS tunnel'],
+ ['Quality checks','TypeScript, ESLint, API regression tests and Playwright browser tests'],
+];
+const questions=[
+ {question:'Do I need to install anything?',answer:'No application installation is needed. Open the demo link in a web browser. Browser and device acceptance testing is still in progress.'},
+ {question:'Is my data saved after I close the browser?',answer:'Yes. Application records and submitted feedback are saved by the backend and survive normal server restarts. The current demo uses local JSON-file storage; automated backups and recovery are not yet implemented.'},
+ {question:'Can I access the demo at any time?',answer:'The current demo depends on the host laptop, backend, frontend server and forwarding tunnel remaining online. Independent hosting has not yet been set up.'},
+ {question:'Can several people use the application?',answer:'The demo supports multiple signed-in users. Production capacity and performance limits have not been established through load testing.'},
+ {question:'How are access permissions managed?',answer:'Administrators assign reusable role profiles to users. Application permissions are checked on the server. Designer-defined permissions for individual workflow nodes are saved configuration only and are not yet enforced during project work.'},
+ {question:'Are workflows, approvals and sign-offs fully operational?',answer:'Work in progress. The designer saves layouts, hierarchy, completion rules and profile settings. Automated node-level access checks, completion checks, approval and sign-off execution, and workflow-triggered notifications are not active yet.'},
+ {question:'Does the application support SSO or multi-factor authentication?',answer:'Not currently. The demo uses its own application login. Single sign-on and multi-factor authentication have not been integrated.'},
+ {question:'What can I import or export?',answer:'The React demo supports tracker CSV import with a preview and validation. CSV and JSON exports are available according to your permissions. Native Excel import is not currently available in the React interface.'},
+ {question:'How do notifications work?',answer:'In-app notifications appear under the bell in the header. The badge shows unread notifications. The bell rings on a ten-second cycle while unread notifications remain, unless your device requests reduced motion. Email notifications are not currently sent.'},
+ {question:'How do I report a problem or suggest an improvement?',answer:'Use Send feedback in the header. Choose Bug, Suggestion or Question, describe the issue and optionally attach a PNG or JPEG screenshot up to 1 MB. Your name, page, timestamp and server revision are captured. Use Feedback to follow the status of your submissions.'},
+ {question:'Who can see my feedback?',answer:'You can see your own submissions. Users with Manage Feedback permission can review all submissions, view attached screenshots and update status. Reviewer notes are visible to the submitter. Feedback email alerts are not currently sent.'},
+ {question:'Is the application ready for production?',answer:'This is a demonstration/pilot. Production hosting, managed persistence, backup and recovery, security hardening, workflow execution and complete acceptance testing remain to be finalised.'},
+ {question:'What does ETS IPM stand for?',answer:'IPM stands for Integrated Project Management. ETS is the existing project branding; its expansion and the final product name have not yet been confirmed.'},
+];
+export default function About(){return <div className="about-workspace"><section className="panel about-summary"><div><h2>Application information</h2><p className="muted">ETS IPM brings projects, tasks, resource planning and reporting into one workspace.</p></div><span className="about-demo-badge">Demo / pilot</span><p className="about-stage-note">This page describes the current demonstration. Features marked work in progress are not yet operational.</p></section><section className="panel"><div className="about-section-title"><h2>Technical specification</h2><span>Current demo</span></div><div className="about-spec-scroll"><table className="about-specification"><tbody>{specifications.map(([label,value])=><tr key={label}><th scope="row">{label}</th><td>{value}</td></tr>)}</tbody></table></div><p className="about-footnote">Software versions shown are major versions, not a claim that every dependency is on its latest release.</p></section><section className="panel" aria-labelledby="about-faq-title"><div className="about-section-title"><h2 id="about-faq-title">Frequently asked questions</h2><span>{questions.length} answers</span></div><p className="muted">Select a question to expand its answer.</p><div className="about-faq">{questions.map(({question,answer})=><details key={question}><summary>{question}<span aria-hidden="true">+</span></summary><p>{answer}</p></details>)}</div></section></div>}
