@@ -84,3 +84,5 @@ export const permissionLabels:Record<string,{label:string;help:string}> = {
     "help": "Create and edit permission profiles."
   }
 };
+
+permissionLabels.manageFeedback={label:'Manage Feedback',help:'Review all demo feedback, view attached screenshots and update status and reviewer notes. Users without this permission see only their own submissions.'};

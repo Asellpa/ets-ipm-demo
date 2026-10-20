@@ -10,6 +10,7 @@ const DATA = process.env.ETS_DATA_DIR ? path.resolve(process.env.ETS_DATA_DIR) :
 const DB = path.join(DATA, 'db.json');
 const SEED = path.join(DATA, 'seed.json');
 const sessions = new Map();
+const SERVER_VERSION=(()=>{try{return require('child_process').execFileSync('git',['rev-parse','--short','HEAD'],{cwd:ROOT,stdio:['ignore','pipe','ignore']}).toString().trim()}catch{return 'unversioned'}})();
 
 if (!fs.existsSync(DATA)) fs.mkdirSync(DATA, { recursive: true });
 if (!fs.existsSync(DB) && fs.existsSync(SEED)) fs.copyFileSync(SEED, DB);
@@ -18,7 +19,7 @@ const PERMS = [
   'viewCommercial','createCommercial','viewCommercialFields','viewRFQEngineering','createEER',
   'editProjects','deleteProjects','createTasks','assignTasks','updateActualMH','raiseEscalations',
   'viewCapacity','manageLeave','viewReports','exportData','importData','viewAudit','manageTeam',
-  'manageSettings','manageUsers','manageRoles'
+  'manageSettings','manageUsers','manageRoles','manageFeedback'
 ];
 
 // Permission values must be booleans; coercing strings such as "false" grants access.
@@ -87,7 +88,7 @@ function verifyPassword(password, user){
 }
 function normalize(db){
   db.users ||= []; db.projects ||= []; db.tasks ||= []; db.notifications ||= []; db.audit ||= [];
-  db.comments ||= []; db.escalations ||= []; db.leave ||= [];
+  db.feedback ||= []; db.comments ||= []; db.escalations ||= []; db.leave ||= [];
   db.settings ||= { standardHoursPerDay:8, commercialFields:['pricing','rom','poStatus','negotiationNotes','offerDetails','agreementDetails'], departments:['Certification','M&I','P&S','Engineering','DOA','Internal'] };
   db.profiles ||= structuredClone(DEFAULT_PROFILES);
   for(const d of DEFAULT_PROFILES){
@@ -205,6 +206,30 @@ const server = http.createServer(async(req,res)=>{ let release;try{
       projects:visibleProjects.map(p=>safeProject(p,ps)),
       tasks:db.tasks.filter(t=>visibleIds.has(t.projectId)&&canReadTask(t,ps,pmap[t.projectId])).map(t=>({...safeTask(t,ps,pmap[t.projectId]),level:taskLevel(t,pmap[t.projectId])})),
       comments:db.comments.filter(c=>canReadTask(db.tasks.find(t=>t.id===c.taskId),ps,pmap[c.projectId])), escalations:ps.viewReports?db.escalations.filter(e=>canReadTask(db.tasks.find(t=>t.id===e.taskId),ps,pmap[e.projectId])):[], notifications, audit:ps.viewAudit?db.audit.map(a=>safeAudit(a,ps)):[], leave:db.leave, settings:db.settings});
+  }
+
+  if(req.method==='GET'&&u.pathname==='/api/feedback'){
+    const feedback=db.feedback.filter(f=>ps.manageFeedback||f.createdById===user.id).map(({screenshot,...f})=>({...f,hasScreenshot:!!screenshot}));
+    return send(res,200,{feedback,canManage:!!ps.manageFeedback});
+  }
+  if(req.method==='POST'&&u.pathname==='/api/feedback'){
+    const b=await body(req),text=String(b.description||'').trim();
+    if(!['Bug','Suggestion','Question'].includes(b.type)||text.length<5||text.length>5000)return send(res,422,{error:'Choose a feedback type and enter 5–5000 characters'});
+    if(String(b.expected||'').length>2000||String(b.page||'').length>120)return send(res,422,{error:'Feedback context is too long'});
+    let screenshot;
+    if(b.screenshot){const image=b.screenshot;if(!['image/png','image/jpeg'].includes(image.mime)||typeof image.data!=='string'||image.data.length>1400000||! /^[A-Za-z0-9+/]+={0,2}$/.test(image.data))return send(res,422,{error:'Screenshot must be PNG or JPEG, at most 1 MB'});const bytes=Buffer.from(image.data,'base64');const valid=image.mime==='image/png'?bytes.subarray(0,8).equals(Buffer.from([137,80,78,71,13,10,26,10])):bytes[0]===255&&bytes[1]===216&&bytes[2]===255;if(!valid||bytes.length>1048576)return send(res,422,{error:'Invalid screenshot or file exceeds 1 MB'});screenshot={mime:image.mime,data:image.data};}
+    const feedback={id:id('fb'),type:b.type,description:text,expected:String(b.expected||'').trim(),page:String(b.page||'').trim(),createdAt:now(),createdById:user.id,createdBy:user.name,serverVersion:SERVER_VERSION,status:'New',adminNote:'',screenshot};
+    db.feedback.unshift(feedback);audit(db,user,'Submitted demo feedback',{entityType:'feedback',entityId:feedback.id});write(db);return send(res,201,{ok:true,id:feedback.id});
+  }
+  if(req.method==='GET'&&/^\/api\/feedback\/[^/]+\/screenshot$/.test(u.pathname)){
+    const f=db.feedback.find(f=>f.id===u.pathname.split('/')[3]);if(!f||(!ps.manageFeedback&&f.createdById!==user.id))return send(res,404,{error:'Feedback not found'});if(!f.screenshot)return send(res,404,{error:'Screenshot not found'});
+    return send(res,200,Buffer.from(f.screenshot.data,'base64'),f.screenshot.mime,{'X-Content-Type-Options':'nosniff','Content-Disposition':'inline; filename="feedback-screenshot.'+(f.screenshot.mime==='image/png'?'png':'jpg')+'"'});
+  }
+  if(req.method==='PATCH'&&/^\/api\/feedback\/[^/]+$/.test(u.pathname)){
+    if(!ps.manageFeedback)return send(res,403,{error:'Manage Feedback permission required'});const f=db.feedback.find(f=>f.id===u.pathname.split('/').pop());if(!f)return send(res,404,{error:'Feedback not found'});const b=await body(req);
+    if(Object.keys(b).some(k=>!['status','adminNote'].includes(k)))return send(res,422,{error:'Only status and reviewer note may be changed'});
+    if(b.status!==undefined&&!['New','In progress','Resolved'].includes(b.status))return send(res,422,{error:'Invalid feedback status'});if(b.adminNote!==undefined&&(typeof b.adminNote!=='string'||b.adminNote.length>3000))return send(res,422,{error:'Reviewer note must be at most 3000 characters'});
+    if(b.status!==undefined)f.status=b.status;if(b.adminNote!==undefined)f.adminNote=b.adminNote.trim();f.updatedAt=now();f.updatedBy=user.name;audit(db,user,'Updated feedback '+f.id+' — '+f.status,{entityType:'feedback',entityId:f.id});write(db);return send(res,200,{ok:true});
   }
 
   if(req.method==='GET'&&u.pathname==='/api/admin/users'){
