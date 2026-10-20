@@ -55,7 +55,7 @@ export default function ProjectEditor({project,canCommercial,canEer,canViewComme
  }
  return <form className="panel editor" onSubmit={e=>void submit(e)}>
   <h2>{project?'Edit project':'Create project'}</h2>
-  <label>Project type<select disabled={Boolean(project)} value={type} onChange={e=>setType(e.target.value)}>{canCommercial&&<option value="commercial">Commercial RFQ</option>}{canEer&&<option value="internal_eer">Internal EER</option>}</select></label>
+  <label>Project type<select aria-label="Project type" disabled={Boolean(project)} value={type} onChange={e=>setType(e.target.value)}>{canCommercial&&<option value="commercial">Commercial RFQ</option>}{canEer&&<option value="internal_eer">Internal EER</option>}</select></label>
   <label>Project title<input required maxLength={200} value={values.title} onChange={e=>set('title',e.target.value)}/></label>
   <label>Stage<input disabled={type==='commercial'&&!canViewCommercialFields} value={values.stage} onChange={e=>set('stage',e.target.value)}/></label>
   <h3>Project details</h3>

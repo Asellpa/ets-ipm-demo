@@ -38,3 +38,6 @@ button { font-size: 13px; line-height: 20px; font-weight: 600; }
 .panel button:not(.node-select):not(.node-add):not(.icon-button), .toolbar > button, .button-group > button, .form-actions > button { font-size: 13px; }
 .editor label:has(> input[type="checkbox"]), .editor label:has(> input[type="radio"]) { flex-direction: row; align-items: center; }
 .editor label > input[type="checkbox"], .editor label > input[type="radio"] { width: auto; }
+
+button { padding: 7px 12px; }
+button:not(.notification-bell):not(.node-select):not(.node-add):not(.icon-button) { min-height: var(--control-height); }

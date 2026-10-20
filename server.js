@@ -385,7 +385,7 @@ const server = http.createServer(async(req,res)=>{ let release;try{
   }
   if(req.method==='POST'&&u.pathname==='/api/leave'){
     if(!ps.manageLeave)return send(res,403,{error:'Manage Leave permission required'}); const b=await body(req); if(!b.user||!b.date)return send(res,400,{error:'User and date are required'});
-    if(!validDate(b.date)||!db.users.some(u=>u.active&&u.name===b.user))return send(res,422,{error:'Valid date and active team member required'}); if(db.leave.some(l=>l.user===b.user&&l.date===b.date))return send(res,409,{error:'Leave already recorded for this day'});
+    if(!b.date||planningDateError(b.date,'')||!db.users.some(u=>u.active&&u.name===b.user))return send(res,422,{error:'An active team member and a valid date between 1900 and 2100 are required'}); if(db.leave.some(l=>l.user===b.user&&l.date===b.date))return send(res,409,{error:'Leave already recorded for this day'});
     const l={id:id('l'),user:b.user,date:b.date,type:b.type||'Leave',note:b.note||''}; db.leave.push(l); audit(db,user,`Marked ${l.type} for ${l.user} on ${l.date}`,{entityType:'leave',entityId:l.id}); write(db); return send(res,201,{ok:true,id:l.id});
   }
   if(req.method==='DELETE'&&/^\/api\/leave\/[^/]+$/.test(u.pathname)){

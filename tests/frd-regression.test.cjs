@@ -59,6 +59,7 @@ test('FRD permissions, ownership, notifications, capacity, workflow, export and 
  let cap=(await call(admin,'/capacity?start=2026-10-19&days=7')).data.rows.find(r=>r.user==='Engineer');assert.equal(cap.cells[0].booked,6,'Package totals must not double-count task allocation');assert.equal(cap.cells[5].capacity,0);
  assert.equal((await call(engineer,'/leave','POST',{user:'Engineer',date:'2026-10-19'})).status,403);
  assert.equal((await call(admin,'/leave','POST',{user:'Engineer',date:'bad'})).status,422);
+ assert.equal((await call(admin,'/leave','POST',{user:'Engineer',date:'3001-01-01'})).status,422);
  const leave=await call(admin,'/leave','POST',{user:'Engineer',date:'2026-10-19',type:'Training'});assert.equal(leave.status,201);assert.equal((await call(admin,'/leave','POST',{user:'Engineer',date:'2026-10-19'})).status,409);
  cap=(await call(admin,'/capacity?start=2026-10-19&days=7')).data.rows.find(r=>r.user==='Engineer');assert.equal(cap.cells[0].capacity,0);assert.equal(cap.cells[0].free,0);assert.equal(cap.cells[0].leave,'Training');
  assert.equal((await call(admin,'/leave/'+leave.data.id,'DELETE')).status,200);
