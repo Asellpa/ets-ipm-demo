@@ -3,6 +3,7 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const { URL } = require('url');
+const WF=require('./workflow-runtime');
 
 const PORT = process.env.PORT || 5174;
 const ROOT = __dirname;
@@ -88,6 +89,8 @@ function verifyPassword(password, user){
 }
 function normalize(db){
   db.users ||= []; db.projects ||= []; db.tasks ||= []; db.notifications ||= []; db.audit ||= [];
+  db.projectWorkflows ||= {};
+  db.workflowConfig=WF.upgradeConfig(db.workflowConfig);
   db.feedback ||= []; db.comments ||= []; db.escalations ||= []; db.leave ||= [];
   db.settings ||= { standardHoursPerDay:8, commercialFields:['pricing','rom','poStatus','negotiationNotes','offerDetails','agreementDetails'], departments:['Certification','M&I','P&S','Engineering','DOA','Internal'] };
   db.profiles ||= structuredClone(DEFAULT_PROFILES);
@@ -110,6 +113,7 @@ function normalize(db){
     if(u.name === 'Stephan' && !u.passwordHash) Object.assign(u, hashPassword('Testing','3960cf8e585c51dbae91a9b6f41ee4fc'));
     delete u.password; delete u.role;
   }
+  db.workflowConfig=normalizeWorkflowPermissions(db.workflowConfig,db.profiles);
   return db;
 }
 const read = () => normalize(JSON.parse(fs.readFileSync(DB,'utf8')));
@@ -126,7 +130,7 @@ function audit(db,user,text,meta={}){ db.audit.unshift({id:id('a'),ts:now(),user
 function notify(db,text,recipients=['All']){ db.notifications.unshift({id:id('n'),ts:now(),text,recipients,readBy:[]});  }
 function safeProject(p,ps){ const x=structuredClone(p); if(p.type!=='commercial'||!ps.viewCommercialFields)for(const k of ['pricing','rom','poStatus','negotiationNotes','offerDetails','agreementDetails'])delete x[k]; if(p.type==='commercial'&&p.stage==='RFQ'&&!ps.viewRFQEngineering)for(const k of ['scope','requiredInputs','deliverables','remarks'])delete x[k];return x; }
 function safeAudit(a,ps){const x=structuredClone(a);if(!ps.viewCommercialFields&&x.changes)x.changes=x.changes.filter(c=>!['pricing','rom','poStatus','negotiationNotes','offerDetails','agreementDetails'].includes(c.field));return x;}
-function canReadTask(t,ps,p){return !!t && !!p && (p.type!=='commercial'||(ps.viewCommercial&&(p.stage!=='RFQ'||ps.viewRFQEngineering)));}
+function canReadTask(t,ps,p,db,user){return !!t&&!!p&&(p.type!=='commercial'||(ps.viewCommercial&&(p.stage!=='RFQ'||ps.viewRFQEngineering)))&&(!t.workflowNodeId||!db||WF.canRead(db,p,user,ps,t.workflowNodeId));}
 function validDate(v){return typeof v==='string'&&/^\d{4}-\d{2}-\d{2}$/.test(v)&&!Number.isNaN(Date.parse(v))&&new Date(v).toISOString().slice(0,10)===v;}
 function planningDateError(start,end,endLabel='Due date'){
   for(const value of [start,end])if(value&&(!validDate(value)||value<'1900-01-01'||value>'2100-12-31'))return 'Dates must be valid calendar dates between 1900 and 2100';
@@ -147,6 +151,13 @@ function spreadHours(startDate,total,max=8){ const result={}; if(!startDate||!Nu
 function activeAdminCount(db){ return db.users.filter(u=>u.active && profileOf(db,u)?.permissions?.manageUsers && profileOf(db,u)?.permissions?.manageRoles).length; }
 function profileExists(db,pid){ return db.profiles.some(p=>p.id===pid); }
 function uniqueUserConflict(db,uid,username,userId){ return db.users.some(x=>x.id!==uid && (String(x.username||'').toLowerCase()===String(username||'').trim().toLowerCase() || String(x.userId||'')===String(userId||'').trim())); }
+
+function workflowTemplate(db,p,requested){const workflowId=requested||db.workflowConfig.projectTypes.find(t=>t.id===p.type)?.workflowId;return db.workflowConfig.workflows.find(w=>w.id===workflowId);}
+function leadError(db,b){for(const key of ['managerId','supervisorId'])if(b[key]){const u=db.users.find(u=>u.id===b[key]&&u.active);if(!u||!perms(db,u).assignTasks)return 'Project managers and supervisors must be active users with task assignment permission';}return '';}
+function attachWorkflow(db,p,w,user){const instance=WF.create(w,user.id);db.projectWorkflows[p.id]=instance;p.workflowId=w.id;p.workflowVersion=instance.version;for(const node of instance.nodes)for(const title of node.taskTemplates){const wbs=nextWbs(db,p,p.wbs);db.tasks.push({id:id('t'),projectId:p.id,wbs,parentWbs:p.wbs,level:3,title,assignee:'Unassigned',status:'To Do',mhEstimate:0,mhActual:0,startDate:p.startDate||new Date().toISOString().slice(0,10),dueDate:'',workflowNodeId:node.id,flag:'',flagReason:''});}WF.refresh(instance);}
+function workflowAuditVisible(db,a,user,ps){if(a.workflowNodeId){const p=project(db,a.projectId);return p&&WF.canRead(db,p,user,ps,a.workflowNodeId);}if(a.entityType==='task'){const t=db.tasks.find(t=>t.id===a.entityId);if(t?.workflowNodeId)return canReadTask(t,ps,project(db,t.projectId),db,user);}return true;}
+function workflowNotify(db,p,user,before){const instance=db.projectWorkflows[p.id];if(!instance)return;WF.refresh(instance);for(const node of instance.nodes){if(instance.states[node.id].status==='In progress'&&before?.[node.id]?.status!=='In progress'){const recipients=db.users.filter(u=>u.active&&[p.managerId,p.supervisorId].includes(u.id)&&WF.canRead(db,p,u,perms(db,u),node.id)).map(u=>u.name);if(recipients.length){notify(db,'Project '+p.wbs+': '+node.name+' is ready',recipients);Object.assign(db.notifications[0],{projectId:p.id,workflowNodeId:node.id});if(node.type==='notification')instance.states[node.id].notificationSentAt=now();}}}}
+
 
 let mutationQueue=Promise.resolve();
 const server = http.createServer(async(req,res)=>{ let release;try{
@@ -173,7 +184,7 @@ const server = http.createServer(async(req,res)=>{ let release;try{
   if(u.pathname==='/api/workflow-config'){
     if(req.method==='GET'){
       if(!ps.manageSettings)return send(res,403,{error:'Manage Settings permission required'});
-      let config;try{config=normalizeWorkflowPermissions(db.workflowConfig,db.profiles)}catch(e){return send(res,400,{error:e.message})}return send(res,200,{config,profiles:db.profiles.map(p=>({id:p.id,name:p.name})),runtimeEnforced:false});
+      let config;try{config=normalizeWorkflowPermissions(db.workflowConfig,db.profiles)}catch(e){return send(res,400,{error:e.message})}return send(res,200,{config,profiles:db.profiles.map(p=>({id:p.id,name:p.name})),runtimeEnforced:true});
     }
     if(req.method==='PUT'){
       if(!ps.manageSettings)return send(res,403,{error:'Manage Settings permission required'});
@@ -183,6 +194,7 @@ const server = http.createServer(async(req,res)=>{ let release;try{
       if(ids.size!==cfg.workflows.length)return send(res,400,{error:'Duplicate workflow IDs'});
       if(!cfg.workflows.length)return send(res,400,{error:'At least one workflow is required'});
       for(const w of cfg.workflows){
+        const runtimeError=WF.validate(w);if(runtimeError)return send(res,400,{error:runtimeError});if(w.nodes?.some(n=>n.parallelWithPrevious!==undefined&&typeof n.parallelWithPrevious!=='boolean'))return send(res,400,{error:'Parallel setting must be boolean'});
         if(!w.id||!String(w.name||'').trim()||!w.stages?.length||new Set(w.stages).size!==w.stages.length||w.stages.some(s=>!String(s).trim()))return send(res,400,{error:'Workflow name and unique non-empty stages required'});
         if(w.nodes){if(!Array.isArray(w.nodes))return send(res,400,{error:'Invalid workflow nodes'});const nids=new Set(w.nodes.map(n=>n.id));if(nids.size!==w.nodes.length)return send(res,400,{error:'Duplicate node IDs'});for(const n of w.nodes){if(!n.id||!String(n.name||'').trim()||!['stage','object','taskgroup','approval','signoff','decision','milestone','notification'].includes(n.type)||!['manual','fields','children','tasks','approval','signoff'].includes(n.completion))return send(res,400,{error:'Invalid workflow node'});let cur=n,seen=new Set([n.id]);while(cur.parent){if(!nids.has(cur.parent)||seen.has(cur.parent))return send(res,400,{error:'Invalid or circular node parent'});seen.add(cur.parent);cur=w.nodes.find(x=>x.id===cur.parent)}}}
 
@@ -202,16 +214,24 @@ const server = http.createServer(async(req,res)=>{ let release;try{
     }
   }
 
+  if(req.method==='GET'&&u.pathname==='/api/workflow-templates')return send(res,200,{workflows:db.workflowConfig.workflows.map(w=>({id:w.id,name:w.name})),projectTypes:db.workflowConfig.projectTypes,managers:db.users.filter(u=>u.active&&perms(db,u).assignTasks).map(u=>({id:u.id,name:u.name}))});
+  if(/^\/api\/projects\/[^/]+\/workflow(?:\/nodes\/[^/]+)?$/.test(u.pathname)){
+    const parts=u.pathname.split('/'),p=project(db,parts[3]);if(!p||!canReadTask({},ps,p,db,user))return send(res,404,{error:'Project workflow not found or engineering access is restricted'});
+    if(req.method==='GET'&&parts.length===5)return send(res,200,{workflow:WF.view(db,p,user,ps),canAttach:!!(ps.editProjects&&ps.assignTasks)});
+    if(req.method==='POST'&&parts.length===5){if(!ps.editProjects||!ps.assignTasks)return send(res,403,{error:'Project editing and assignment permissions required'});if(db.projectWorkflows[p.id])return send(res,409,{error:'This project already has a saved workflow. Its version is preserved.'});const b=await body(req),w=workflowTemplate(db,p,b.workflowId);if(!w)return send(res,422,{error:'Select a valid workflow'});attachWorkflow(db,p,w,user);workflowNotify(db,p,user,{});audit(db,user,'Attached project workflow '+w.name,{entityType:'project',entityId:p.id,projectId:p.id});write(db);return send(res,201,{workflow:WF.view(db,p,user,ps)});}
+    if(req.method==='PATCH'&&parts.length===7){const instance=db.projectWorkflows[p.id];if(!instance)return send(res,404,{error:'Project has no workflow'});const b=await body(req),before=structuredClone(instance.states),result=WF.transition(db,p,user,ps,parts[6],b);if(result.error)return send(res,result.status,{error:result.error});workflowNotify(db,p,user,before);audit(db,user,'Workflow object '+b.action,{entityType:'workflow',entityId:p.id,projectId:p.id,workflowNodeId:parts[6],action:b.action,comment:String(b.comment||'').slice(0,3000)});write(db);return send(res,200,{workflow:WF.view(db,p,user,ps)});}
+  }
+
   if(req.method==='GET'&&u.pathname==='/api/bootstrap'){
     const pmap=Object.fromEntries(db.projects.map(p=>[p.id,p]));
     const visibleProjects=db.projects.filter(p=>p.type!=='commercial'||ps.viewCommercial);
     const visibleIds=new Set(visibleProjects.map(p=>p.id));
-    const notifications=db.notifications.filter(n=>n.recipients?.includes('All')||n.recipients?.includes(user.name)||n.recipients?.includes(profileOf(db,user)?.name));
+    const notifications=db.notifications.filter(n=>n.recipients?.includes('All')||n.recipients?.includes(user.name)||n.recipients?.includes(profileOf(db,user)?.name)).filter(n=>!n.workflowNodeId||project(db,n.projectId)&&WF.canRead(db,project(db,n.projectId),user,ps,n.workflowNodeId));
     return send(res,200,{user:user.name,userId:user.userId,profile:profileOf(db,user)?.name,permissions:ps,
       users:db.users.filter(x=>x.active).map(x=>({id:x.id,name:x.name,position:x.position,capacity:x.capacity,profileId:x.profileId})),
-      projects:visibleProjects.map(p=>safeProject(p,ps)),
-      tasks:db.tasks.filter(t=>visibleIds.has(t.projectId)&&canReadTask(t,ps,pmap[t.projectId])).map(t=>({...safeTask(t,ps,pmap[t.projectId]),level:taskLevel(t,pmap[t.projectId])})),
-      comments:db.comments.filter(c=>canReadTask(db.tasks.find(t=>t.id===c.taskId),ps,pmap[c.projectId])), escalations:ps.viewReports?db.escalations.filter(e=>canReadTask(db.tasks.find(t=>t.id===e.taskId),ps,pmap[e.projectId])):[], notifications, audit:ps.viewAudit?db.audit.map(a=>safeAudit(a,ps)):[], leave:db.leave, settings:db.settings});
+      projects:visibleProjects.map(p=>safeProject(p,ps)),workflowSummaries:Object.fromEntries(visibleProjects.filter(p=>canReadTask({},ps,p,db,user)&&db.projectWorkflows[p.id]).map(p=>{const w=WF.view(db,p,user,ps);return [p.id,{name:w.name,completed:w.completed,total:w.total,isComplete:w.isComplete,active:w.nodes.filter(n=>!n.parent&&n.status==='In progress').map(n=>n.name)}]})),
+      tasks:db.tasks.filter(t=>visibleIds.has(t.projectId)&&canReadTask(t,ps,pmap[t.projectId],db,user)).map(t=>({...safeTask(t,ps,pmap[t.projectId]),level:taskLevel(t,pmap[t.projectId]),workflowLocked:!!t.workflowNodeId&&!WF.canUpdateTask(db,pmap[t.projectId],user,ps,t)})),
+      comments:db.comments.filter(c=>canReadTask(db.tasks.find(t=>t.id===c.taskId),ps,pmap[c.projectId],db,user)), escalations:ps.viewReports?db.escalations.filter(e=>canReadTask(db.tasks.find(t=>t.id===e.taskId),ps,pmap[e.projectId],db,user)):[], notifications, audit:ps.viewAudit?db.audit.filter(a=>workflowAuditVisible(db,a,user,ps)).map(a=>safeAudit(a,ps)):[], leave:db.leave, settings:db.settings});
   }
 
   if(req.method==='GET'&&u.pathname==='/api/feedback'){
@@ -326,52 +346,60 @@ const server = http.createServer(async(req,res)=>{ let release;try{
     const n=type==='commercial'?db.projects.filter(p=>p.type==='commercial').length+1:db.projects.filter(p=>p.type==='internal_eer').length+1;
     const p={id:id('p'),wbs:b.wbs||(type==='commercial'?String(n):`EER-${String(n).padStart(3,'0')}`),type,client:b.client||(type==='internal_eer'?'Internal':''),title:b.title||'Untitled project',aircraft:b.aircraft||'',registration:b.registration||'',releaseType:b.releaseType||'',sector:b.sector||'',owner:b.owner||user.name,priority:b.priority||'Normal',stage:type==='commercial'?(b.stage||'RFQ'):(b.stage||'In Progress'),status:b.status||b.stage||(type==='commercial'?'RFQ':'In Progress'),scope:b.scope||'',edd:b.edd||'',startDate:b.startDate||new Date().toISOString().slice(0,10),requiredInputs:b.requiredInputs||'',deliverables:b.deliverables||'',clientFocal:b.clientFocal||'',doaFocal:b.doaFocal||'',projectManager:b.projectManager||'',site:b.site||'',sage:b.sage||'',nreStatus:b.nreStatus||'',remarks:b.remarks||'',pricing:type==='commercial'?{rom:b.rom||'',poStatus:b.poStatus||'',negotiationNotes:b.negotiationNotes||'',offerDetails:b.offerDetails||'',agreementDetails:b.agreementDetails||''}:undefined};
     const dateError=projectDateError(p);if(dateError)return send(res,422,{error:dateError});
-    db.projects.unshift(p); audit(db,user,`Created ${type==='commercial'?'Commercial project':'Internal EER'} ${p.wbs}`,{entityType:'project',entityId:p.id,projectId:p.id});
+    const leads=leadError(db,b);if(leads)return send(res,422,{error:leads});p.managerId=b.managerId||(ps.assignTasks?user.id:'');p.supervisorId=b.supervisorId||'';if(p.managerId)p.projectManager=db.users.find(u=>u.id===p.managerId)?.name||'';const template=workflowTemplate(db,p,b.workflowId);if(!template)return send(res,422,{error:'Select a valid workflow'});
+    db.projects.unshift(p);attachWorkflow(db,p,template,user);workflowNotify(db,p,user,{}); audit(db,user,`Created ${type==='commercial'?'Commercial project':'Internal EER'} ${p.wbs}`,{entityType:'project',entityId:p.id,projectId:p.id});
     if(type==='internal_eer'&&!['Senior Management','System Administrator'].includes(profileOf(db,user)?.name))notify(db,`New Internal EER ${p.wbs} created by ${user.name}`,['LTSE','Senior Management','System Administrator']);
     write(db); return send(res,201,{ok:true,project:safeProject(p,ps)});
   }
   if(req.method==='PATCH'&&/^\/api\/projects\/[^/]+$/.test(u.pathname)){
     if(!ps.editProjects)return send(res,403,{error:'Edit Projects permission required'}); const pid=u.pathname.split('/').pop(), p=project(db,pid); if(!p)return send(res,404,{error:'Project not found'});
     if(p.type==='commercial'&&(!ps.viewCommercial||p.stage==='RFQ'&&!ps.viewRFQEngineering))return send(res,403,{error:'Commercial access required'}); const b=await body(req), before=structuredClone(p);
-    const permissionError=profilePermissionError(b.permissions);if(permissionError)return send(res,400,{error:permissionError}); if(p.type==='commercial'&&!ps.viewCommercialFields&&['rom','poStatus','negotiationNotes','offerDetails','agreementDetails','pricing','stage','status'].some(k=>Object.hasOwn(b,k)))return send(res,403,{error:'Commercial fields and handover require management permission'}); const fields=['client','title','aircraft','registration','releaseType','sector','owner','priority','stage','status','scope','edd','startDate','requiredInputs','deliverables','clientFocal','doaFocal','projectManager','site','sage','nreStatus','remarks'];
+    const permissionError=profilePermissionError(b.permissions);if(permissionError)return send(res,400,{error:permissionError}); if(p.type==='commercial'&&!ps.viewCommercialFields&&['rom','poStatus','negotiationNotes','offerDetails','agreementDetails','pricing','stage','status'].some(k=>Object.hasOwn(b,k)))return send(res,403,{error:'Commercial fields and handover require management permission'}); const fields=['managerId','supervisorId','client','title','aircraft','registration','releaseType','sector','owner','priority','stage','status','scope','edd','startDate','requiredInputs','deliverables','clientFocal','doaFocal','projectManager','site','sage','nreStatus','remarks'];
+    if(['managerId','supervisorId'].some(k=>Object.hasOwn(b,k))){if(!ps.assignTasks)return send(res,403,{error:'Task assignment permission required to appoint project leads'});const leads=leadError(db,b);if(leads)return send(res,422,{error:leads});}if(b.workflowId&&b.workflowId!==p.workflowId)return send(res,409,{error:'Existing workflow versions cannot be changed through project editing'});
     const candidate={...p};for(const k of fields)if(Object.hasOwn(b,k))candidate[k]=b[k];const dateError=projectDateError(candidate);if(dateError)return send(res,422,{error:dateError});
     for(const k of fields)if(Object.hasOwn(b,k))p[k]=b[k]; if(p.type==='commercial'&&ps.viewCommercialFields){ p.pricing||={}; for(const k of ['rom','poStatus','negotiationNotes','offerDetails','agreementDetails'])if(Object.hasOwn(b,k))p.pricing[k]=b[k]; }
+    if(Object.hasOwn(b,'managerId'))p.projectManager=db.users.find(u=>u.id===p.managerId)?.name||'';
     const changes=diff(before,p,fields.concat(['pricing'])); if(changes.length)audit(db,user,`Updated project ${p.wbs}: ${changes.map(c=>c.field).join(', ')}`,{entityType:'project',entityId:p.id,projectId:p.id,changes}); write(db); return send(res,200,{ok:true,project:safeProject(p,ps)});
   }
   if(req.method==='DELETE'&&/^\/api\/projects\/[^/]+$/.test(u.pathname)){
     if(!ps.deleteProjects)return send(res,403,{error:'Delete Projects permission required'}); const pid=u.pathname.split('/').pop(), p=project(db,pid); if(!p)return send(res,404,{error:'Project not found'});
     const tids=db.tasks.filter(t=>t.projectId===pid).map(t=>t.id); db.projects=db.projects.filter(x=>x.id!==pid); db.tasks=db.tasks.filter(t=>t.projectId!==pid); db.comments=db.comments.filter(c=>!tids.includes(c.taskId)); db.escalations=db.escalations.filter(e=>!tids.includes(e.taskId));
+    delete db.projectWorkflows[pid];
     audit(db,user,`Deleted project ${p.wbs} and ${tids.length} tasks`,{entityType:'project',entityId:pid,projectId:pid}); write(db); return send(res,200,{ok:true});
   }
 
   if(req.method==='POST'&&u.pathname==='/api/work-packages'){
     if(!ps.createTasks)return send(res,403,{error:'Create Tasks permission required'}); const b=await body(req), p=project(db,b.projectId); if(!p)return send(res,404,{error:'Project not found'});
-    if(!canReadTask({},ps,p))return send(res,403,{error:'Project engineering access required'}); const wbs=nextWbs(db,p,p.wbs), t={id:id('wp'),projectId:p.id,wbs,parentWbs:p.wbs,level:2,title:b.title||'Work package',department:b.department||b.title||'Engineering',assignee:ps.assignTasks?(b.assignee||'Unassigned'):'Unassigned',priority:b.priority||'Normal',status:b.status||'In Progress',mhEstimate:Number(b.mhEstimate||0),mhActual:Number(b.mhActual||0),startDate:b.startDate||new Date().toISOString().slice(0,10),dueDate:b.dueDate||'',dependency:'',action:b.action||'',remarks:b.remarks||'',flag:'',flagReason:''};
+    if(!canReadTask({},ps,p,db,user))return send(res,403,{error:'Project engineering access required'}); const wbs=nextWbs(db,p,p.wbs), t={id:id('wp'),projectId:p.id,wbs,parentWbs:p.wbs,level:2,title:b.title||'Work package',department:b.department||b.title||'Engineering',assignee:ps.assignTasks?(b.assignee||'Unassigned'):'Unassigned',priority:b.priority||'Normal',status:b.status||'In Progress',mhEstimate:Number(b.mhEstimate||0),mhActual:Number(b.mhActual||0),startDate:b.startDate||new Date().toISOString().slice(0,10),dueDate:b.dueDate||'',dependency:'',action:b.action||'',remarks:b.remarks||'',flag:'',flagReason:''};
+    if(b.workflowNodeId){if(Number(t.level)===2)return send(res,422,{error:'Link individual tasks, not work package totals, to workflow objects'});const error=WF.editError(db,p,user,ps,b.workflowNodeId);if(error)return send(res,403,{error});t.workflowNodeId=b.workflowNodeId;}
     const validation=taskError(t);if(validation)return send(res,422,{error:validation});if(t.assignee!=='Unassigned'&&!db.users.some(u=>u.active&&u.name===t.assignee))return send(res,422,{error:'Assignee must be an active team member'});
-    db.tasks.push(t); audit(db,user,`Created Level 2 work package ${wbs}`,{entityType:'task',entityId:t.id,projectId:p.id}); write(db); return send(res,201,{ok:true,task:safeTask(t,ps,p)});
+    db.tasks.push(t);if(t.workflowNodeId)db.projectWorkflows[p.id].revision++; audit(db,user,`Created Level 2 work package ${wbs}`,{entityType:'task',entityId:t.id,workflowNodeId:t.workflowNodeId,projectId:p.id}); write(db); return send(res,201,{ok:true,task:safeTask(t,ps,p)});
   }
   if(req.method==='POST'&&u.pathname==='/api/tasks'){
     if(!ps.createTasks)return send(res,403,{error:'Create Tasks permission required'}); const b=await body(req), p=project(db,b.projectId); if(!p)return send(res,404,{error:'Project not found'});
-    if(!canReadTask({},ps,p))return send(res,403,{error:'Project engineering access required'}); const parent=b.parentWbs||p.wbs; if(parent!==p.wbs&&!db.tasks.some(t=>t.projectId===p.id&&t.wbs===parent&&Number(t.level)===2))return send(res,400,{error:'Invalid parent work package'}); const wbs=nextWbs(db,p,parent), t={id:id('t'),projectId:p.id,wbs,parentWbs:parent,level:3,title:b.title||'New task',department:b.department||'Engineering',assignee:ps.assignTasks?(b.assignee||'Unassigned'):'Unassigned',priority:b.priority||'Normal',status:b.assignee&&b.assignee!=='Unassigned'&&(!b.status||b.status==='To Do')?'Assigned':(b.status||'To Do'),mhEstimate:Number(b.mhEstimate||0),mhActual:Number(b.mhActual||0),startDate:b.startDate||new Date().toISOString().slice(0,10),dueDate:b.dueDate||'',dependency:b.dependency||'',action:b.action||'',remarks:b.remarks||'',flag:b.flag||'',flagReason:b.flagReason||''};
+    if(!canReadTask({},ps,p,db,user))return send(res,403,{error:'Project engineering access required'}); const parent=b.parentWbs||p.wbs; if(parent!==p.wbs&&!db.tasks.some(t=>t.projectId===p.id&&t.wbs===parent&&Number(t.level)===2))return send(res,400,{error:'Invalid parent work package'}); const wbs=nextWbs(db,p,parent), t={id:id('t'),projectId:p.id,wbs,parentWbs:parent,level:3,title:b.title||'New task',department:b.department||'Engineering',assignee:ps.assignTasks?(b.assignee||'Unassigned'):'Unassigned',priority:b.priority||'Normal',status:b.assignee&&b.assignee!=='Unassigned'&&(!b.status||b.status==='To Do')?'Assigned':(b.status||'To Do'),mhEstimate:Number(b.mhEstimate||0),mhActual:Number(b.mhActual||0),startDate:b.startDate||new Date().toISOString().slice(0,10),dueDate:b.dueDate||'',dependency:b.dependency||'',action:b.action||'',remarks:b.remarks||'',flag:b.flag||'',flagReason:b.flagReason||''};
+    if(b.workflowNodeId){if(Number(t.level)===2)return send(res,422,{error:'Link individual tasks, not work package totals, to workflow objects'});const error=WF.editError(db,p,user,ps,b.workflowNodeId);if(error)return send(res,403,{error});t.workflowNodeId=b.workflowNodeId;}
     const validation=taskError(t);if(validation)return send(res,422,{error:validation}); if(t.assignee!=='Unassigned'&&!db.users.some(u=>u.active&&u.name===t.assignee))return send(res,422,{error:'Assignee must be an active team member'});
     if(t.mhActual>t.mhEstimate&&(!['Escalation','Bottleneck'].includes(t.flag)||!String(t.flagReason||'').trim()))return send(res,422,{error:'Actual MH exceeds estimate. Select Escalation or Bottleneck and enter a reason.'});
-    if(t.flag)db.escalations.unshift({id:id('e'),taskId:t.id,projectId:t.projectId,type:t.flag,reason:t.flagReason,user:user.name,ts:now()}); db.tasks.push(t); audit(db,user,`Created task ${wbs} — ${t.title}`,{entityType:'task',entityId:t.id,projectId:p.id}); if(t.assignee!=='Unassigned')notify(db,`Task ${wbs} assigned to ${t.assignee}`,[t.assignee]); write(db); return send(res,201,{ok:true,task:safeTask(t,ps,p)});
+    if(t.flag)db.escalations.unshift({id:id('e'),taskId:t.id,projectId:t.projectId,type:t.flag,reason:t.flagReason,user:user.name,ts:now()}); db.tasks.push(t);if(t.workflowNodeId)db.projectWorkflows[p.id].revision++; audit(db,user,`Created task ${wbs} — ${t.title}`,{entityType:'task',entityId:t.id,workflowNodeId:t.workflowNodeId,projectId:p.id}); if(t.assignee!=='Unassigned')notify(db,`Task ${wbs} assigned to ${t.assignee}`,[t.assignee]); write(db); return send(res,201,{ok:true,task:safeTask(t,ps,p)});
   }
   if(req.method==='PATCH'&&/^\/api\/tasks\/[^/]+$/.test(u.pathname)){
     const tid=u.pathname.split('/').pop(), t=db.tasks.find(x=>x.id===tid); if(!t)return send(res,404,{error:'Task not found'}); const p=project(db,t.projectId), b=await body(req), before=structuredClone(t);
-    if(!canReadTask(t,ps,p)||(!ps.assignTasks&&t.assignee!==user.name))return send(res,403,{error:'Only the assignee or a task lead can update this task'}); if(!ps.assignTasks&&['assignee','mhEstimate','title','projectId','startDate','dueDate'].some(k=>Object.hasOwn(b,k)&&b[k]!==t[k]))return send(res,403,{error:'Task assignment permission required'}); const allowed=['status','remarks','dependency']; if(ps.updateActualMH)allowed.push('mhActual'); if(ps.raiseEscalations)allowed.push('flag','flagReason'); if(ps.assignTasks)allowed.push('assignee','priority','mhEstimate','dueDate','department','startDate','action','title');
+    if(!canReadTask(t,ps,p,db,user)||(!ps.assignTasks&&t.assignee!==user.name))return send(res,403,{error:'Only the assignee or a task lead can update this task'}); if(!ps.assignTasks&&['assignee','mhEstimate','title','projectId','startDate','dueDate'].some(k=>Object.hasOwn(b,k)&&b[k]!==t[k]))return send(res,403,{error:'Task assignment permission required'}); const allowed=['status','remarks','dependency']; if(ps.updateActualMH)allowed.push('mhActual'); if(ps.raiseEscalations)allowed.push('flag','flagReason'); if(ps.assignTasks)allowed.push('workflowNodeId','assignee','priority','mhEstimate','dueDate','department','startDate','action','title');
     const candidate={...t}; for(const k of allowed)if(Object.hasOwn(b,k))candidate[k]=['mhActual','mhEstimate'].includes(k)?Number(b[k]||0):b[k];
     const validation=taskError(candidate);if(validation)return send(res,422,{error:validation}); if(candidate.assignee!=='Unassigned'&&!db.users.some(u=>u.active&&u.name===candidate.assignee))return send(res,422,{error:'Assignee must be an active team member'}); if(before.assignee!==candidate.assignee&&candidate.assignee!=='Unassigned'&&candidate.status==='To Do')candidate.status='Assigned';
     if(Number(candidate.mhActual)>Number(candidate.mhEstimate)&&(!['Escalation','Bottleneck'].includes(candidate.flag)||!String(candidate.flagReason||'').trim()))return send(res,422,{error:'Actual MH exceeds estimate. Select Escalation or Bottleneck and enter a reason.'});
-    Object.assign(t,candidate); const changes=diff(before,t,allowed); if(changes.length){ audit(db,user,`Updated task ${t.wbs}: ${changes.map(c=>c.field).join(', ')}`,{entityType:'task',entityId:t.id,projectId:t.projectId,changes}); if(before.assignee!==t.assignee&&t.assignee)notify(db,`Task ${t.wbs} assigned to ${t.assignee}`,[t.assignee]); if(before.flag!==t.flag||before.flagReason!==t.flagReason){ db.escalations.unshift({id:id('e'),taskId:t.id,projectId:t.projectId,type:t.flag,reason:t.flagReason,user:user.name,ts:now()}); if(t.flag)notify(db,`${t.flag} flagged on ${t.wbs}`,['Senior Management','System Administrator']); } }
+    if(t.workflowNodeId){const error=WF.editError(db,p,user,ps,t.workflowNodeId);if(error&&!WF.canUpdateTask(db,p,user,ps,t))return send(res,403,{error});if(!WF.canUpdateTask(db,p,user,ps,t))return send(res,403,{error:'Workflow object is read-only for your profile'});}if(Object.hasOwn(b,'workflowNodeId')){if(!ps.assignTasks)return send(res,403,{error:'Task assignment permission required'});if(b.workflowNodeId){if(Number(t.level)===2)return send(res,422,{error:'Link individual tasks, not work package totals, to workflow objects'});const error=WF.editError(db,p,user,ps,b.workflowNodeId);if(error)return send(res,403,{error});}candidate.workflowNodeId=b.workflowNodeId||'';}
+    Object.assign(t,candidate);if(t.workflowNodeId||before.workflowNodeId)db.projectWorkflows[p.id].revision++; const changes=diff(before,t,allowed); if(changes.length){ audit(db,user,`Updated task ${t.wbs}: ${changes.map(c=>c.field).join(', ')}`,{entityType:'task',entityId:t.id,workflowNodeId:t.workflowNodeId,projectId:t.projectId,changes}); if(before.assignee!==t.assignee&&t.assignee)notify(db,`Task ${t.wbs} assigned to ${t.assignee}`,[t.assignee]); if(before.flag!==t.flag||before.flagReason!==t.flagReason){ db.escalations.unshift({id:id('e'),taskId:t.id,projectId:t.projectId,type:t.flag,reason:t.flagReason,user:user.name,ts:now()}); if(t.flag)notify(db,`${t.flag} flagged on ${t.wbs}`,['Senior Management','System Administrator']); } }
     write(db); return send(res,200,{ok:true,task:safeTask(t,ps,p)});
   }
   if(req.method==='DELETE'&&/^\/api\/tasks\/[^/]+$/.test(u.pathname)){
     if(!ps.createTasks)return send(res,403,{error:'Create Tasks permission required'}); const tid=u.pathname.split('/').pop(), t=db.tasks.find(x=>x.id===tid); if(!t)return send(res,404,{error:'Task not found'});
-    if(!canReadTask(t,ps,project(db,t.projectId)))return send(res,403,{error:'Task access required'}); if(db.tasks.some(x=>x.projectId===t.projectId&&x.parentWbs===t.wbs))return send(res,409,{error:'Delete child tasks before deleting a work package'}); db.tasks=db.tasks.filter(x=>x.id!==tid); db.comments=db.comments.filter(c=>c.taskId!==tid); audit(db,user,`Deleted task ${t.wbs}`,{entityType:'task',entityId:tid,projectId:t.projectId}); write(db); return send(res,200,{ok:true});
+    if(t.workflowNodeId){const error=WF.editError(db,project(db,t.projectId),user,ps,t.workflowNodeId);if(error)return send(res,403,{error});}
+    if(!canReadTask(t,ps,project(db,t.projectId),db,user))return send(res,403,{error:'Task access required'}); if(db.tasks.some(x=>x.projectId===t.projectId&&x.parentWbs===t.wbs))return send(res,409,{error:'Delete child tasks before deleting a work package'}); db.tasks=db.tasks.filter(x=>x.id!==tid); db.comments=db.comments.filter(c=>c.taskId!==tid); audit(db,user,`Deleted task ${t.wbs}`,{entityType:'task',entityId:tid,workflowNodeId:t.workflowNodeId,projectId:t.projectId}); write(db); return send(res,200,{ok:true});
   }
   if(req.method==='POST'&&/^\/api\/tasks\/[^/]+\/comments$/.test(u.pathname)){
-    const tid=u.pathname.split('/')[3], t=db.tasks.find(x=>x.id===tid), b=await body(req); if(!t)return send(res,404,{error:'Task not found'}); if(!canReadTask(t,ps,project(db,t.projectId)))return send(res,403,{error:'Task access required'}); if(!String(b.text||'').trim())return send(res,400,{error:'Comment is required'});
+    const tid=u.pathname.split('/')[3], t=db.tasks.find(x=>x.id===tid), b=await body(req); if(!t)return send(res,404,{error:'Task not found'}); if(!canReadTask(t,ps,project(db,t.projectId),db,user))return send(res,403,{error:'Task access required'}); if(t.workflowNodeId&&!WF.canUpdateTask(db,project(db,t.projectId),user,ps,t))return send(res,403,{error:'Workflow object is locked or read-only'});if(!String(b.text||'').trim())return send(res,400,{error:'Comment is required'});
     const c={id:id('c'),taskId:tid,projectId:t.projectId,text:String(b.text).trim(),user:user.name,ts:now()}; db.comments.unshift(c); audit(db,user,`Commented on task ${t.wbs}`,{entityType:'comment',entityId:c.id,projectId:t.projectId}); write(db); return send(res,201,{ok:true,comment:c});
   }
 
@@ -380,7 +408,7 @@ const server = http.createServer(async(req,res)=>{ let release;try{
     const start=u.searchParams.get('start')||new Date().toISOString().slice(0,10), days=Math.min(90,Math.max(1,Number(u.searchParams.get('days')||14))), standard=Number(db.settings.standardHoursPerDay||8);
     if(!validDate(start)||!Number.isFinite(days))return send(res,400,{error:'Invalid capacity date or day count'});
     const dates=[]; let d=new Date(`${start}T00:00:00Z`); for(let i=0;i<days;i++){dates.push(d.toISOString().slice(0,10));d.setUTCDate(d.getUTCDate()+1);}
-    const rows=db.users.filter(x=>x.active).map(person=>{ const booked={},allocations={}; for(const t of db.tasks.filter(t=>t.assignee===person.name&&Number(t.level||3)>=3&&!['Completed','Lost/Cancelled'].includes(t.status)&&canReadTask(t,ps,project(db,t.projectId)))){ const spread=spreadHours(t.startDate,Number(t.mhEstimate||0),standard); for(const [dt,h] of Object.entries(spread)){booked[dt]=(booked[dt]||0)+h;(allocations[dt]||=[]).push({taskId:t.id,hours:h});} } const cells=dates.map(date=>{ const leave=db.leave.find(l=>l.user===person.name&&l.date===date); const weekend=[0,6].includes(new Date(`${date}T00:00:00Z`).getUTCDay()); const cap=weekend||leave?0:Number(person.capacity||standard); const used=Number(booked[date]||0); return {date,booked:used,capacity:cap,free:Math.max(0,cap-used),leave:leave?.type||'',allocations:allocations[date]||[]}; }); return {user:person.name,position:person.position,capacity:Number(person.capacity||standard),cells}; });
+    const rows=db.users.filter(x=>x.active).map(person=>{ const booked={},allocations={}; for(const t of db.tasks.filter(t=>t.assignee===person.name&&Number(t.level||3)>=3&&!['Completed','Lost/Cancelled'].includes(t.status)&&canReadTask(t,ps,project(db,t.projectId),db,user))){ const spread=spreadHours(t.startDate,Number(t.mhEstimate||0),standard); for(const [dt,h] of Object.entries(spread)){booked[dt]=(booked[dt]||0)+h;(allocations[dt]||=[]).push({taskId:t.id,hours:h});} } const cells=dates.map(date=>{ const leave=db.leave.find(l=>l.user===person.name&&l.date===date); const weekend=[0,6].includes(new Date(`${date}T00:00:00Z`).getUTCDay()); const cap=weekend||leave?0:Number(person.capacity||standard); const used=Number(booked[date]||0); return {date,booked:used,capacity:cap,free:Math.max(0,cap-used),leave:leave?.type||'',allocations:allocations[date]||[]}; }); return {user:person.name,position:person.position,capacity:Number(person.capacity||standard),cells}; });
     return send(res,200,{start,days,rows});
   }
   if(req.method==='POST'&&u.pathname==='/api/leave'){
@@ -435,23 +463,24 @@ const server = http.createServer(async(req,res)=>{ let release;try{
   if(req.method==='GET'&&u.pathname==='/api/export.json'){
     if(!ps.exportData)return send(res,403,{error:'Export permission required'});
     const projects=db.projects.filter(p=>p.type!=='commercial'||ps.viewCommercial), ids=new Set(projects.map(p=>p.id));
-    const tasks=db.tasks.filter(t=>ids.has(t.projectId)&&canReadTask(t,ps,project(db,t.projectId))), tids=new Set(tasks.map(t=>t.id));
-    return send(res,200,{projects:projects.map(p=>safeProject(p,ps)),tasks:tasks.map(t=>safeTask(t,ps,project(db,t.projectId))),comments:db.comments.filter(c=>tids.has(c.taskId)),escalations:ps.viewReports?db.escalations.filter(e=>tids.has(e.taskId)):[],leave:ps.manageLeave?db.leave:[],audit:ps.viewAudit?db.audit.map(a=>safeAudit(a,ps)):[],users:db.users.map(({id,name,position,capacity,active})=>({id,name,position,capacity,active}))},'application/json',{'Content-Disposition':'attachment; filename="ets-ipm-data.json"'});
+    const tasks=db.tasks.filter(t=>ids.has(t.projectId)&&canReadTask(t,ps,project(db,t.projectId),db,user)), tids=new Set(tasks.map(t=>t.id));
+    return send(res,200,{projects:projects.map(p=>safeProject(p,ps)),tasks:tasks.map(t=>safeTask(t,ps,project(db,t.projectId))),comments:db.comments.filter(c=>tids.has(c.taskId)),escalations:ps.viewReports?db.escalations.filter(e=>tids.has(e.taskId)):[],leave:ps.manageLeave?db.leave:[],audit:ps.viewAudit?db.audit.filter(a=>workflowAuditVisible(db,a,user,ps)).map(a=>safeAudit(a,ps)):[],workflows:projects.filter(p=>canReadTask({},ps,p,db,user)).map(p=>({projectId:p.id,workflow:WF.view(db,p,user,ps)})),users:db.users.map(({id,name,position,capacity,active})=>({id,name,position,capacity,active}))},'application/json',{'Content-Disposition':'attachment; filename="ets-ipm-data.json"'});
   }
   if(req.method==='GET'&&u.pathname==='/api/export.csv'){
     if(!ps.exportData)return send(res,403,{error:'Export permission required'}); const pmap=Object.fromEntries(db.projects.map(p=>[p.id,p])),head=['WBS','Project','Client','Type','Stage','Task','Assignee','Status','MH Estimate','MH Actual','Flag'],lines=[head.map(csv).join(',')];
-    for(const t of db.tasks){const p=pmap[t.projectId];if(p?.type==='commercial'&&!ps.viewCommercial)continue;if(!canReadTask(t,ps,p))continue;const st=safeTask(t,ps,p);lines.push([t.wbs,p?.title,p?.client,p?.type,p?.stage,t.title,t.assignee,t.status,st.mhEstimate??'',st.mhActual??'',t.flag].map(csv).join(','));}
+    for(const t of db.tasks){const p=pmap[t.projectId];if(p?.type==='commercial'&&!ps.viewCommercial)continue;if(!canReadTask(t,ps,p,db,user))continue;const st=safeTask(t,ps,p);lines.push([t.wbs,p?.title,p?.client,p?.type,p?.stage,t.title,t.assignee,t.status,st.mhEstimate??'',st.mhActual??'',t.flag].map(csv).join(','));}
     return send(res,200,lines.join('\n'),'text/csv',{'Content-Disposition':'attachment; filename="ETS_Work_Tracker_export.csv"'});
   }
   if(req.method==='GET'&&u.pathname.startsWith('/api/reports/')){
     if(!ps.viewReports)return send(res,403,{error:'View Reports permission required'}); let lines;
-    if(u.pathname.endsWith('mh.csv'))lines=[['WBS','Task','Estimate','Actual','Variance'].map(csv).join(','),...db.tasks.filter(t=>Number(t.level||3)>=3&&canReadTask(t,ps,project(db,t.projectId))).map(t=>[t.wbs,t.title,t.mhEstimate,t.mhActual,Number(t.mhActual||0)-Number(t.mhEstimate||0)].map(csv).join(','))];
-    else if(u.pathname.endsWith('escalations.csv'))lines=[['Timestamp','Task','Type','User','Reason'].map(csv).join(','),...db.escalations.filter(e=>canReadTask(db.tasks.find(t=>t.id===e.taskId),ps,project(db,e.projectId))).map(e=>{const t=db.tasks.find(x=>x.id===e.taskId);return[e.ts,t?.wbs||e.taskId,e.type,e.user,e.reason].map(csv).join(',')})];
-    else{const counts={};db.tasks.filter(t=>Number(t.level||3)>=3&&canReadTask(t,ps,project(db,t.projectId))).forEach(t=>counts[t.status]=(counts[t.status]||0)+1);lines=['Status,Count',...Object.entries(counts).map(([s,c])=>`${csv(s)},${c}`)];}
+    if(u.pathname.endsWith('mh.csv'))lines=[['WBS','Task','Estimate','Actual','Variance'].map(csv).join(','),...db.tasks.filter(t=>Number(t.level||3)>=3&&canReadTask(t,ps,project(db,t.projectId),db,user)).map(t=>[t.wbs,t.title,t.mhEstimate,t.mhActual,Number(t.mhActual||0)-Number(t.mhEstimate||0)].map(csv).join(','))];
+    else if(u.pathname.endsWith('escalations.csv'))lines=[['Timestamp','Task','Type','User','Reason'].map(csv).join(','),...db.escalations.filter(e=>canReadTask(db.tasks.find(t=>t.id===e.taskId),ps,project(db,e.projectId),db,user)).map(e=>{const t=db.tasks.find(x=>x.id===e.taskId);return[e.ts,t?.wbs||e.taskId,e.type,e.user,e.reason].map(csv).join(',')})];
+    else{const counts={};db.tasks.filter(t=>Number(t.level||3)>=3&&canReadTask(t,ps,project(db,t.projectId),db,user)).forEach(t=>counts[t.status]=(counts[t.status]||0)+1);lines=['Status,Count',...Object.entries(counts).map(([s,c])=>`${csv(s)},${c}`)];}
     return send(res,200,lines.join('\n'),'text/csv');
   }
   if(req.method==='POST'&&u.pathname==='/api/demo/clear-records'){
     if(!ps.manageSettings)return send(res,403,{error:'Manage Settings permission required'});
+    db.projectWorkflows={};
     for(const key of ['projects','tasks','notifications','audit','comments','escalations','leave'])db[key]=[];
     write(db);return send(res,200,{ok:true,cleared:true});
   }

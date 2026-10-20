@@ -28,3 +28,7 @@ Updated 18 October 2026. Verified browser baseline: https://github.com/Asellpa/e
 - Tests use temporary copies of seed.json. Regression checks assert the working data/db.json is unchanged.
 - No production deployment, no main changes, and no existing database reset.
 - Final user acceptance, hosted staging and deployment validation remain required; a green suite is not a full production sign-off.
+
+## Project workflow extension — 20 October 2026
+
+The later user request adds versioned project workflow execution beyond the supplied FRD's Project/Task model. Runtime node access, completion checks, sequential/parallel groups, named project manager/supervisor completion, required node fields, linked/task-template records, approval/rejection/sign-off history, reopening and in-app readiness notices are implemented. Existing template-only caveats above describe the earlier increment and are superseded by this section. Conditional decision branching, external notifications and automatic migration of in-flight workflow versions remain outside this increment. Commercial RFQ business access remains enforced separately from lifecycle progress.

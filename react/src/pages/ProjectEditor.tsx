@@ -1,4 +1,4 @@
-import {useState,type FormEvent} from 'react';
+import {useEffect,useState,type FormEvent} from 'react';
 import {request,type Project} from '../api';
 
 type Field={key:string;label:string;kind?:'date'|'textarea'};
@@ -18,7 +18,6 @@ const fields:Field[]=[
  {key:'deliverables',label:'Deliverables',kind:'textarea'},
  {key:'clientFocal',label:'Client focal point'},
  {key:'doaFocal',label:'DOA focal point'},
- {key:'projectManager',label:'Project manager'},
  {key:'site',label:'Site'},
  {key:'sage',label:'SAGE reference'},
  {key:'nreStatus',label:'NRE status'},
@@ -32,6 +31,8 @@ const pricingFields=[
  {key:'agreementDetails',label:'Agreement details'}
 ] as const;
 export default function ProjectEditor({project,canCommercial,canEer,canViewCommercialFields,onSaved,onCancel}:{project?:Project;canCommercial:boolean;canEer:boolean;canViewCommercialFields?:boolean;onSaved:()=>Promise<void>;onCancel:()=>void}){
+ const[catalog,setCatalog]=useState<{workflows:{id:string;name:string}[];managers:{id:string;name:string}[]}>({workflows:[],managers:[]});const[workflowId,setWorkflowId]=useState(project?.workflowId||'');const[managerId,setManagerId]=useState(project?.managerId||'');const[supervisorId,setSupervisorId]=useState(project?.supervisorId||'');
+ useEffect(()=>{let active=true;request<typeof catalog>('/workflow-templates').then(result=>{if(active)setCatalog(result)}).catch(e=>{if(active)setError((e as Error).message)});return()=>{active=false}},[]);
  const[type,setType]=useState(project?.type||(canCommercial?'commercial':'internal_eer'));
  const[values,setValues]=useState<Record<string,string>>(()=>{
   const initial:Record<string,string>={title:project?.title||'',stage:project?.stage||''};
@@ -45,7 +46,7 @@ export default function ProjectEditor({project,canCommercial,canEer,canViewComme
  async function submit(e:FormEvent){e.preventDefault();setBusy(true);setError('');
   try{
    if(values.startDate&&values.edd&&values.edd<values.startDate)throw new Error('Expected delivery date cannot precede start date');
-   const payload:Record<string,string>={type,title:values.title.trim()};
+   const payload:Record<string,string>={type,title:values.title.trim(),...(!project?{workflowId,managerId,supervisorId}:{...(managerId!==project.managerId?{managerId}:{}),...(supervisorId!==project.supervisorId?{supervisorId}:{})})};
    if(canViewCommercialFields||type!=='commercial')payload.stage=values.stage;
    for(const field of fields)if(field.key!=='status'||canViewCommercialFields||type!=='commercial')payload[field.key]=values[field.key]||'';
    if(type==='commercial'&&canViewCommercialFields)for(const field of pricingFields)payload[field.key]=values[field.key]||'';
@@ -56,6 +57,8 @@ export default function ProjectEditor({project,canCommercial,canEer,canViewComme
  return <form className="panel editor" onSubmit={e=>void submit(e)}>
   <h2>{project?'Edit project':'Create project'}</h2>
   <label>Project type<select aria-label="Project type" disabled={Boolean(project)} value={type} onChange={e=>setType(e.target.value)}>{canCommercial&&<option value="commercial">Commercial RFQ</option>}{canEer&&<option value="internal_eer">Internal EER</option>}</select></label>
+  <label>Workflow<select aria-label="Workflow" disabled={Boolean(project)} value={workflowId} onChange={e=>setWorkflowId(e.target.value)}><option value="">Default for this project type</option>{project?.workflowId&&!catalog.workflows.some(w=>w.id===project.workflowId)&&<option value={project.workflowId}>Saved project workflow</option>}{catalog.workflows.map(w=><option key={w.id} value={w.id}>{w.name}</option>)}</select></label><p className="field-help">The selected workflow is saved with the project. Later template changes do not reset existing work.</p>
+  <label>Project manager<select aria-label="Project manager" value={managerId} onChange={e=>setManagerId(e.target.value)}><option value="">{project?'Unassigned':'Default to creator if eligible'}</option>{catalog.managers.map(u=><option key={u.id} value={u.id}>{u.name}</option>)}</select></label><label>Project supervisor<select aria-label="Project supervisor" value={supervisorId} onChange={e=>setSupervisorId(e.target.value)}><option value="">Unassigned</option>{catalog.managers.map(u=><option key={u.id} value={u.id}>{u.name}</option>)}</select></label>
   <label>Project title<input required maxLength={200} value={values.title} onChange={e=>set('title',e.target.value)}/></label>
   <label>Stage<input disabled={type==='commercial'&&!canViewCommercialFields} value={values.stage} onChange={e=>set('stage',e.target.value)}/></label>
   <h3>Project details</h3>

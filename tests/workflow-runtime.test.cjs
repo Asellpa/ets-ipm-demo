@@ -1,0 +1,47 @@
+const {test}=require('node:test');const assert=require('node:assert/strict');const fs=require('node:fs');const os=require('node:os');const path=require('node:path');const {spawn}=require('node:child_process');const {once}=require('node:events');
+const ROOT=path.resolve(__dirname,'..');
+test('project workflow runtime: hierarchy, parallel groups, fields, tasks, authorisation, versions and restart',async()=>{
+ const dir=fs.mkdtempSync(path.join(os.tmpdir(),'ets-workflow-'));fs.copyFileSync(path.join(ROOT,'data/seed.json'),path.join(dir,'seed.json'));const port=55000+Math.floor(Math.random()*1000);let server;
+ const start=async()=>{server=spawn(process.execPath,[path.join(ROOT,'server.js')],{env:{...process.env,PORT:String(port),ETS_DATA_DIR:dir},stdio:'pipe'});for(let i=0;i<100;i++){try{await fetch(`http://127.0.0.1:${port}/`);return}catch{await new Promise(r=>setTimeout(r,30))}}throw Error('Server failed to start')};
+ const call=async(cookie,route,method='GET',body)=>{const r=await fetch(`http://127.0.0.1:${port}/api${route}`,{method,headers:{Cookie:cookie||'','Content-Type':'application/json'},body:body===undefined?undefined:JSON.stringify(body)});const text=await r.text();let data;try{data=JSON.parse(text)}catch{data=text}return {status:r.status,data,cookie:r.headers.get('set-cookie')?.split(';')[0]}};
+ const login=async(name,id)=>{const r=await call('','/login','POST',{user:name,id,password:'Testing'});assert.equal(r.status,200);return r.cookie};
+ try{await start();let admin=await login('Stephan','123');
+ const catalog=await call(admin,'/workflow-templates');assert.equal(catalog.status,200);assert.equal(catalog.data.workflows.length,2);
+ const userIds={};for(const [name,profileId]of [['Lead','prof-ltse'],['Other Lead','prof-ltse'],['Engineer','prof-tse']]){const u=await call(admin,'/admin/users','POST',{name,username:name,userId:name,password:'Testing',profileId});assert.equal(u.status,201);userIds[name]=u.data.id;}
+ const lead=await login('Lead','Lead'),other=await login('Other Lead','Other Lead'),engineer=await login('Engineer','Engineer');
+ const role=await call(admin,'/admin/profiles','POST',{name:'Restricted report lead',permissions:{assignTasks:true,editProjects:true,viewReports:true,exportData:true,viewAudit:true}});assert.equal(role.status,201);const roleId=role.data.id;
+ await call(admin,'/admin/users','POST',{name:'Restricted',username:'Restricted',userId:'Restricted',password:'Testing',profileId:roleId});const restricted=await login('Restricted','Restricted');
+ const node=(id,name,parent='',extra={})=>({id,name,parent,type:parent?'object':'stage',completion:'manual',permissions:{},...extra});
+ const nodes=[node('overview','Overview'),node('planning','Planning','',{parallelWithPrevious:true}),node('delivery','Delivery','',{type:'approval',completion:'approval'}),node('rfq','RFQ','overview',{completion:'fields',requiredFields:['Scope agreed'],taskTemplates:['Review RFQ task']}),node('x','Design','overview'),node('y','Secret test','overview',{parallelWithPrevious:true,permissions:{'prof-tse':'hidden',[roleId]:'hidden'},taskTemplates:['Hidden node task']})];
+ const cfg={workflows:[{id:'runtime',name:'Runtime workflow',stages:['Overview','Planning','Delivery'],objects:[],nodes}],projectTypes:[{id:'internal_eer',name:'Internal',workflowId:'runtime'},{id:'commercial',name:'Commercial',workflowId:'runtime'}],register:{},resource:{}};
+ assert.equal((await call(admin,'/workflow-config','PUT',{config:cfg})).status,200);
+ const invalid=structuredClone(cfg);invalid.workflows[0].nodes[0].requiredFields=['Duplicate','Duplicate'];assert.equal((await call(admin,'/workflow-config','PUT',{config:invalid})).status,400);
+ assert.equal((await call(admin,'/projects','POST',{title:'Bad lead',type:'internal_eer',managerId:userIds.Engineer})).status,422);
+ assert.equal((await call(admin,'/projects','POST',{title:'Bad workflow',type:'internal_eer',workflowId:'missing'})).status,422);
+ const created=await call(admin,'/projects','POST',{title:'Workflow regression',type:'internal_eer',workflowId:'runtime',managerId:userIds.Lead});assert.equal(created.status,201,JSON.stringify(created.data));const p=created.data.project;const base='/projects/'+p.id+'/workflow';
+ const get=async(cookie=admin)=>(await call(cookie,base)).data.workflow;
+ const act=async(id,action='complete',cookie=admin,extra={})=>{const instance=await get(cookie);return call(cookie,base+'/nodes/'+id,'PATCH',{action,expectedRevision:instance.revision,...extra})};
+ let instance=await get();const state=id=>instance.nodes.find(n=>n.id===id);assert.equal(state('overview').status,'In progress');assert.equal(state('planning').status,'In progress');assert.equal(state('delivery').status,'Pending');assert.equal(state('rfq').status,'In progress');assert.equal(state('x').status,'Pending');
+ assert.equal((await act('delivery')).status,409);assert.equal((await act('overview')).status,409);assert.equal((await act('rfq','complete',engineer)).status,403);assert.equal((await act('rfq','complete',other)).status,403);assert.equal((await act('rfq','complete',lead)).status,409);
+ const allTasks=(await call(admin,'/bootstrap')).data.tasks;const rfqTask=allTasks.find(t=>t.projectId===p.id&&t.workflowNodeId==='rfq');const hiddenTask=allTasks.find(t=>t.projectId===p.id&&t.workflowNodeId==='y');assert.ok(rfqTask);assert.ok(hiddenTask);
+ assert.equal((await call(admin,'/tasks/'+hiddenTask.id,'PATCH',{status:'Completed'})).status,403,'Pending work must be locked');
+ const restrictedView=await get(restricted);assert.ok(!JSON.stringify(restrictedView).includes('Secret test'));assert.ok(!(await call(restricted,'/bootstrap')).data.tasks.some(t=>t.id===hiddenTask.id));assert.ok(!JSON.stringify((await call(restricted,'/export.json')).data).includes('Hidden node task'));assert.ok(!(await call(restricted,'/export.csv')).data.includes('Hidden node task'));assert.equal((await act('y','save',restricted,{values:{}})).status,404);
+ assert.equal((await act('rfq','save',lead,{values:{'Scope agreed':'Approved scope'}})).status,200);
+ assert.equal((await act('rfq','save',lead,{values:{'Unknown':'Bad field'}})).status,422);
+ assert.equal((await call(admin,'/tasks/'+rfqTask.id,'PATCH',{assignee:'Engineer',mhEstimate:2})).status,200);
+ assert.equal((await call(engineer,'/tasks/'+rfqTask.id,'PATCH',{status:'Completed',mhActual:2})).status,200);
+ assert.equal((await act('rfq','complete',lead)).status,200);
+ instance=await get();assert.equal(state('x').status,'In progress');assert.equal(state('y').status,'In progress');const revision=instance.revision;
+ assert.equal((await act('x','complete',lead)).status,200);
+ assert.equal((await call(lead,base+'/nodes/y','PATCH',{action:'complete',expectedRevision:revision})).status,409,'Stale revisions must fail');
+ assert.equal((await act('y','complete',lead)).status,409);assert.equal((await call(admin,'/tasks/'+hiddenTask.id,'PATCH',{status:'Completed'})).status,200);assert.equal((await act('y','complete',lead)).status,200);
+ assert.equal((await call(admin,'/tasks/'+rfqTask.id,'PATCH',{status:'In Progress'})).status,403,'Completed object tasks must be locked');
+ assert.equal((await act('overview','complete',lead)).status,200);instance=await get();assert.equal(state('delivery').status,'Pending','Parallel predecessor must also finish');
+ assert.equal((await act('planning','complete',lead)).status,200);instance=await get();assert.equal(state('delivery').status,'In progress');
+ assert.equal((await act('delivery','complete',lead)).status,422,'Approvals require comments');assert.equal((await act('delivery','reject',lead,{comment:'Need evidence'})).status,200);assert.equal((await get()).isComplete,false);assert.equal((await act('delivery','complete',lead,{comment:'Evidence reviewed'})).status,200);assert.equal((await get()).isComplete,true);
+ const before=await get();const changed=structuredClone(cfg);changed.workflows[0].nodes[0].name='New overview';assert.equal((await call(admin,'/workflow-config','PUT',{config:changed})).status,200);assert.equal((await get()).version,before.version);assert.equal((await get()).nodes[0].name,'Overview');const second=await call(admin,'/projects','POST',{title:'New version',type:'internal_eer'});const secondInstance=(await call(admin,'/projects/'+second.data.project.id+'/workflow')).data.workflow;assert.notEqual(secondInstance.version,before.version);assert.equal(secondInstance.nodes[0].name,'New overview');
+ assert.equal((await act('rfq','reopen',lead)).status,422);assert.equal((await act('rfq','reopen',lead,{comment:'Scope changed'})).status,200);instance=await get();assert.equal(state('rfq').status,'In progress');assert.equal(state('overview').status,'In progress');assert.equal(state('delivery').status,'Pending');assert.equal(state('planning').status,'Completed','Independent parallel phase stays complete');assert.equal((await call(admin,'/bootstrap')).data.tasks.find(t=>t.id===rfqTask.id).status,'Completed');assert.ok(state('rfq').history.some(h=>h.action==='reopen'&&h.comment==='Scope changed'));
+ const stored=JSON.parse(fs.readFileSync(path.join(dir,'db.json'),'utf8'));assert.ok(stored.projectWorkflows[p.id]);
+ await new Promise(resolve=>{server.once('exit',resolve);server.kill()});await start();admin=await login('Stephan','123');assert.equal((await get()).nodes.find(n=>n.id==='rfq').status,'In progress');
+ }finally{if(server?.exitCode===null){const exit=once(server,'exit');server.kill();await exit}fs.rmSync(dir,{recursive:true,force:true});}
+});
