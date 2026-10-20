@@ -1,4 +1,5 @@
 const crypto = require("node:crypto");
+const F = require("./workflow-fields");
 const LIFECYCLE = [
   "Overview",
   "Planning",
@@ -9,17 +10,7 @@ const LIFECYCLE = [
 ];
 const ACCESS = ["hidden", "view", "edit", "complete", "approve"];
 function standardNodes() {
-  return LIFECYCLE.map((name, i) => ({
-    id: "phase-" + i,
-    name,
-    type: "stage",
-    parent: "",
-    completion: "manual",
-    permissions: {},
-    parallelWithPrevious: false,
-    requiredFields: [],
-    taskTemplates: [],
-  }));
+  return F.defaultNodes(LIFECYCLE);
 }
 function defaultConfig() {
   return {
@@ -90,6 +81,35 @@ function upgradeConfig(config) {
       roots = nodes.filter((n) => !n.parent);
     const names = roots.map((n) => n.name).join("|");
     if (
+      ["commercial", "eer"].includes(w.id) &&
+      roots.length === 6 &&
+      nodes.length === 6 &&
+      roots.every(
+        (n, i) =>
+          n.name === LIFECYCLE[i] &&
+          !n.fields &&
+          !n.requiredFields.length &&
+          !n.taskTemplates.length,
+      )
+    ) {
+      const defaults = standardNodes();
+      const ids = Object.fromEntries(
+        defaults.slice(0, 6).map((n, i) => [n.id, roots[i].id]),
+      );
+      w.nodes = defaults.map((n) =>
+        n.parent
+          ? { ...n, parent: ids[n.parent] }
+          : {
+              ...n,
+              id: ids[n.id],
+              permissions:
+                roots.find((r) => r.id === ids[n.id])?.permissions || {},
+            },
+      );
+      w.objects = [];
+      continue;
+    }
+    if (
       names === "RFQ|Awarded|In Progress|Escalated|Completed" ||
       names === "Raised|Review|Planning|In Progress|Sign-off|Completed"
     ) {
@@ -124,6 +144,8 @@ function validate(w) {
   if (nodes.length > 200 || !nodes.length)
     return "Workflow must contain 1–200 objects";
   for (const n of nodes) {
+    const fieldError = F.validateSchema(n);
+    if (fieldError) return fieldError;
     if (
       n.parallelWithPrevious !== undefined &&
       typeof n.parallelWithPrevious !== "boolean"
@@ -158,6 +180,7 @@ function create(w, userId) {
       .slice(0, 12),
     createdAt: new Date().toISOString(),
     createdById: userId,
+    schemaVersion: 3,
     revision: 1,
     nodes,
     states: Object.fromEntries(
@@ -286,13 +309,20 @@ function blockers(db, p, instance, node) {
     result.push("Complete all linked tasks first");
   if (node.completion === "tasks" && !tasks.length)
     result.push("Link at least one task");
-  if (node.completion === "fields" && !node.requiredFields.length)
-    result.push("Configure at least one required field");
   if (
-    node.requiredFields.some((key) => !String(state.values?.[key] || "").trim())
+    node.completion === "fields" &&
+    !F.fieldsFor(node).some((f) => f.required)
   )
+    result.push("Configure at least one required field");
+  if (F.missingRequired(node, state, p))
     result.push("Fill all required fields");
   return result;
+}
+function requiresSignoff(instance, node) {
+  return !node.parent || instance.nodes.some((n) => n.parent === node.id);
+}
+function namedLead(p, user) {
+  return [p.managerId, p.supervisorId].includes(user.id);
 }
 function view(db, p, user, ps) {
   const instance = db.projectWorkflows?.[p.id];
@@ -325,11 +355,21 @@ function view(db, p, user, ps) {
         parent: n.parent,
         completion: n.completion,
         parallelWithPrevious: n.parallelWithPrevious,
-        requiredFields: n.requiredFields,
+        fields: F.visibleFields(n, p, ps),
+        requiredFields: F.visibleFields(n, p, ps)
+          .filter((f) => f.required)
+          .map((f) => f.id),
+        requiresSignoff: requiresSignoff(instance, n),
         ...structuredClone(state),
+        values: Object.fromEntries(
+          Object.entries(state.values || {}).filter(([id]) =>
+            F.visibleFields(n, p, ps).some((f) => f.id === id),
+          ),
+        ),
         blockers: blocked,
         canEdit: ACCESS.indexOf(level) >= 2 && state.status === "In progress",
         canComplete:
+          (!requiresSignoff(instance, n) || namedLead(p, user)) &&
           isLead(p, user) &&
           (ps.assignTasks || user.profileId === "prof-admin") &&
           ACCESS.indexOf(level) >= 3 &&
@@ -340,6 +380,7 @@ function view(db, p, user, ps) {
           state.status === "In progress" &&
           !blocked.length,
         canReopen:
+          (!requiresSignoff(instance, n) || namedLead(p, user)) &&
           isLead(p, user) &&
           (ps.assignTasks || user.profileId === "prof-admin") &&
           ACCESS.indexOf(level) >= 3 &&
@@ -375,6 +416,9 @@ function resetFrom(instance, node) {
     delete state.completedBy;
     delete state.startedAt;
     delete state.decision;
+    delete state.signedOffBy;
+    delete state.signedOffById;
+    delete state.signedOffAt;
   }
   return reset;
 }
@@ -391,24 +435,18 @@ function transition(db, p, user, ps, nodeId, b) {
   const state = instance.states[nodeId],
     level = access(instance, node, p, user, ps),
     action = b.action;
-  if (!["save", "complete", "reopen", "reject"].includes(action))
+  if (!["save", "complete", "signoff", "reopen", "reject"].includes(action))
     return { status: 422, error: "Invalid workflow action" };
   if (action === "save") {
     const error = editError(db, p, user, ps, nodeId);
     if (error) return { status: 403, error };
     if (b.values !== undefined) {
-      if (
-        !b.values ||
-        typeof b.values !== "object" ||
-        Array.isArray(b.values) ||
-        Object.entries(b.values).some(
-          ([k, v]) =>
-            !node.requiredFields.includes(k) ||
-            typeof v !== "string" ||
-            v.length > 5000,
-        )
-      )
-        return { status: 422, error: "Invalid workflow field values" };
+      const checked = F.validateValues(node, p, ps, b.values);
+      if (checked.error)
+        return { status: checked.status || 422, error: checked.error };
+      Object.assign(p, checked.updates);
+      if (Object.keys(checked.pricing).length)
+        p.pricing = { ...(p.pricing || {}), ...checked.pricing };
       state.values = { ...state.values, ...b.values };
       state.history ||= [];
       state.history.push({
@@ -430,7 +468,28 @@ function transition(db, p, user, ps, nodeId, b) {
         error:
           "Only the assigned project manager or supervisor can complete project objects",
       };
+    const parent = requiresSignoff(instance, node);
+    if (parent && !namedLead(p, user))
+      return {
+        status: 403,
+        error:
+          "Parent sign-off requires the assigned project manager or supervisor, including for administrators",
+      };
+    if (parent && action === "complete")
+      return {
+        status: 422,
+        error: "Every parent requires an explicit sign-off",
+      };
+    if (
+      action === "signoff" &&
+      !parent &&
+      node.type !== "signoff" &&
+      node.completion !== "signoff"
+    )
+      return { status: 422, error: "This object uses normal completion" };
     const reason = String(b.comment || "").trim();
+    if (action === "signoff" && !reason)
+      return { status: 422, error: "A sign-off comment is required" };
     if (reason.length > 3000)
       return { status: 422, error: "Comment must be at most 3000 characters" };
     if (action === "reopen") {
@@ -468,11 +527,19 @@ function transition(db, p, user, ps, nodeId, b) {
         state.status = "Completed";
         state.completedAt = new Date().toISOString();
         state.completedBy = user.name;
-        state.decision = approval
-          ? node.type === "signoff" || node.completion === "signoff"
+        if (action === "signoff") {
+          state.signedOffBy = user.name;
+          state.signedOffById = user.id;
+          state.signedOffAt = state.completedAt;
+        }
+        state.decision =
+          action === "signoff"
             ? "Signed off"
-            : "Approved"
-          : "Completed";
+            : approval
+              ? node.type === "signoff" || node.completion === "signoff"
+                ? "Signed off"
+                : "Approved"
+              : "Completed";
       }
     }
     state.history ||= [];

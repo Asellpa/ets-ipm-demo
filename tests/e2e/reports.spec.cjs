@@ -8,7 +8,7 @@ test('administrator can filter reports and export results',async({page})=>{
  await page.getByRole('button',{name:'Project Register'}).click();
  await page.getByRole('button',{name:'+ New project'}).click();
  await page.getByLabel('Project type').selectOption('internal_eer');
- await page.getByLabel('Project title').fill('QA Completed Report Project');
+ await page.getByLabel('Record name (optional)').fill('QA Completed Report Project');
  await page.getByRole('button',{name:'Save project'}).click();
  await page.getByRole('button',{name:'Tasks & Work Packages'}).click();
  await page.getByRole('button',{name:'+ Add',exact:true}).click();await page.getByRole('button',{name:'New task',exact:true}).click();
@@ -28,7 +28,7 @@ test('administrator can filter reports and export results',async({page})=>{
 
 test('report overview, overdue drill-down, workload and empty filters use consistent data',async({page})=>{
  await page.goto('/');await page.getByLabel('Username').fill('Stephan');await page.getByLabel('User ID').fill('123');await page.getByLabel('Password').fill('Testing');await page.getByRole('button',{name:'Sign in',exact:true}).click();await expect(page.getByRole('heading',{name:'Overview',level:1})).toBeVisible();
- const suffix=Date.now().toString(36),name='Report drilldown '+suffix;let r=await page.request.post('/api/projects',{data:{type:'internal_eer',title:name}});expect(r.status()).toBe(201);const {project}=await r.json();
+ const suffix=Date.now().toString(36),name='Report drilldown '+suffix;let r=await page.request.post('/api/projects',{data:{workflowId:'eer',type:'internal_eer',title:name}});expect(r.status()).toBe(201);const {project}=await r.json();
  r=await page.request.post('/api/tasks',{data:{projectId:project.id,title:'Late report task '+suffix,mhEstimate:8,mhActual:2,status:'In Progress',assignee:'Stephan',startDate:'2026-01-01',dueDate:'2026-01-02'}});expect(r.status()).toBe(201);
  r=await page.request.post('/api/tasks',{data:{projectId:project.id,title:'Finished report task '+suffix,mhEstimate:4,mhActual:3,status:'Completed'}});expect(r.status()).toBe(201);
  await page.reload();await page.getByRole('button',{name:'Reports',exact:true}).click();await page.getByLabel('Project',{exact:true}).selectOption(project.id);await expect(page.getByRole('progressbar',{name:'Task completion'})).toHaveAttribute('aria-valuenow','50');const summary=page.getByRole('row').filter({hasText:name});await expect(summary).toContainText('12 h');await expect(summary).toContainText('5 h');

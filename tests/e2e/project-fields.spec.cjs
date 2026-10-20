@@ -1,26 +1,4 @@
 const {test,expect}=require('@playwright/test');
-test('internal project detail fields survive save and reload',async({page})=>{
- await page.goto('/');
- await page.getByLabel('Username').fill('Stephan');
- await page.getByLabel('User ID').fill('123');
- await page.getByLabel('Password').fill('Testing');
- await page.getByRole('button',{name:'Sign in'}).click();
- await page.getByRole('button',{name:'Project Register'}).click();
- await page.getByRole('button',{name:'+ New project'}).click();
- await page.getByLabel('Project type').selectOption('internal_eer');
- await page.getByLabel('Project title').fill('QA Detailed Internal EER');
- await page.getByLabel('Aircraft',{exact:true}).fill('A320');
- await page.getByLabel('Registration').fill('QA-001');
- await page.getByLabel('Scope').fill('QA design and certification');
- await page.getByLabel('Deliverables').fill('QA acceptance package');
- await page.getByRole('button',{name:'Save project'}).click();
- await expect(page.getByText('QA Detailed Internal EER')).toBeVisible();
- await page.reload();
- await page.getByRole('button',{name:'Project Register'}).click();
- const row=page.getByRole('row').filter({hasText:'QA Detailed Internal EER'});
- await row.getByRole('button',{name:'Edit'}).click();
- await expect(page.getByLabel('Aircraft',{exact:true})).toHaveValue('A320');
- await expect(page.getByLabel('Registration')).toHaveValue('QA-001');
- await expect(page.getByLabel('Scope')).toHaveValue('QA design and certification');
- await expect(page.getByLabel('Deliverables')).toHaveValue('QA acceptance package');
+test('workflow fields start blank and saved object details survive reload',async({page})=>{
+ await page.goto('/');await page.getByLabel('Username').fill('Stephan');await page.getByLabel('User ID').fill('123');await page.getByLabel('Password').fill('Testing');await page.getByRole('button',{name:'Sign in'}).click();await page.getByRole('button',{name:'Project Register',exact:true}).click();await page.getByRole('button',{name:'+ New project'}).click();await page.getByLabel('Project type',{exact:true}).selectOption('internal_eer');await page.getByLabel('Record name (optional)',{exact:true}).fill('QA Detailed Internal EER');await expect(page.getByLabel('Scope',{exact:true})).toHaveCount(0);await page.getByRole('button',{name:'Save project'}).click();const details=page.getByRole('region',{name:'Selected workflow object'}),nav=page.getByRole('navigation',{name:'Project workflow objects'});await expect(details.getByLabel('Project name',{exact:true})).toHaveValue('');await details.getByLabel('Project name',{exact:true}).fill('QA Detailed Internal EER');await details.getByLabel('Start date',{exact:true}).fill('2026-10-20');await details.getByLabel('Scope',{exact:true}).fill('QA design and certification');await details.getByRole('button',{name:'Save object fields'}).click();await nav.getByRole('button',{name:/^Details/}).click();await details.getByLabel('Aircraft',{exact:true}).fill('A320');await details.getByLabel('Registration',{exact:true}).fill('QA-001');await details.getByRole('button',{name:'Save object fields'}).click();await page.reload();await page.getByRole('button',{name:'Project Register',exact:true}).click();await page.getByRole('row').filter({hasText:'QA Detailed Internal EER'}).getByRole('button',{name:'Open',exact:true}).click();await expect(details.getByLabel('Scope',{exact:true})).toHaveValue('QA design and certification');await nav.getByRole('button',{name:/^Details/}).click();await expect(details.getByLabel('Aircraft',{exact:true})).toHaveValue('A320');await expect(details.getByLabel('Registration',{exact:true})).toHaveValue('QA-001');
 });

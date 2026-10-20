@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import { request, type Project, type Session, type Task } from '../api';
+import type { ObjectField } from './WorkflowFieldsEditor';
 type History = { action: string; comment: string; user: string; at: string };
 type WorkNode = {
   id: string;
@@ -9,6 +10,10 @@ type WorkNode = {
   completion: string;
   parallelWithPrevious: boolean;
   requiredFields: string[];
+  fields: ObjectField[];
+  requiresSignoff: boolean;
+  signedOffBy?: string;
+  signedOffAt?: string;
   status: string;
   values: Record<string, string>;
   completedBy?: string;
@@ -230,7 +235,7 @@ function ObjectDetails({
           : 'Runs after the previous sibling group.'}{' '}
         Child objects and linked tasks must be complete before this object can finish.
       </p>
-      {node.requiredFields.length > 0 && (
+      {node.fields.length > 0 && (
         <form
           className="editor"
           onSubmit={(e) => {
@@ -238,15 +243,57 @@ function ObjectDetails({
             void mutate('save');
           }}
         >
-          {node.requiredFields.map((field) => (
-            <label key={field}>
-              {field}
-              <textarea
-                aria-label={field}
-                disabled={!node.canEdit || busy}
-                value={values[field] || ''}
-                onChange={(e) => setValues((current) => ({ ...current, [field]: e.target.value }))}
-              />
+          {node.fields.map((field) => (
+            <label key={field.id}>
+              {field.label}
+              {field.required ? ' *' : ''}
+              {field.type === 'textarea' ? (
+                <textarea
+                  aria-label={field.label}
+                  disabled={!node.canEdit || busy}
+                  value={values[field.id] || ''}
+                  onChange={(e) =>
+                    setValues((current) => ({ ...current, [field.id]: e.target.value }))
+                  }
+                />
+              ) : field.type === 'select' ? (
+                <select
+                  aria-label={field.label}
+                  disabled={!node.canEdit || busy}
+                  value={values[field.id] || ''}
+                  onChange={(e) =>
+                    setValues((current) => ({ ...current, [field.id]: e.target.value }))
+                  }
+                >
+                  <option value="">Select…</option>
+                  {field.options?.map((option) => (
+                    <option key={option}>{option}</option>
+                  ))}
+                </select>
+              ) : field.type === 'checkbox' ? (
+                <input
+                  aria-label={field.label}
+                  type="checkbox"
+                  disabled={!node.canEdit || busy}
+                  checked={values[field.id] === 'true'}
+                  onChange={(e) =>
+                    setValues((current) => ({ ...current, [field.id]: String(e.target.checked) }))
+                  }
+                />
+              ) : (
+                <input
+                  aria-label={field.label}
+                  type={field.type}
+                  min={field.type === 'date' ? '1900-01-01' : field.min}
+                  max={field.type === 'date' ? '2100-12-31' : undefined}
+                  step={field.type === 'number' ? 'any' : undefined}
+                  disabled={!node.canEdit || busy}
+                  value={values[field.id] || ''}
+                  onChange={(e) =>
+                    setValues((current) => ({ ...current, [field.id]: e.target.value }))
+                  }
+                />
+              )}
             </label>
           ))}
           {node.canEdit && <button disabled={busy}>Save object fields</button>}
@@ -257,6 +304,18 @@ function ObjectDetails({
         <p role="status">
           In-app readiness notification recorded at{' '}
           {new Date(node.notificationSentAt).toLocaleString()}.
+        </p>
+      )}
+      {node.requiresSignoff && (
+        <p className="permission-note">
+          Parent sign-off is compulsory and must be recorded by the assigned project manager or
+          supervisor after all required work is complete.
+        </p>
+      )}
+      {node.signedOffBy && (
+        <p>
+          Signed off by {node.signedOffBy}
+          {node.signedOffAt ? ' on ' + new Date(node.signedOffAt).toLocaleString() : ''}.
         </p>
       )}
       <h3>Linked tasks</h3>
@@ -360,7 +419,7 @@ function ObjectDetails({
         <label className="project-comment">
           {node.canReopen
             ? 'Reason for reopening'
-            : approval
+            : approval || node.requiresSignoff
               ? 'Approval / sign-off comment'
               : 'Completion comment (optional)'}
           <textarea
@@ -388,12 +447,16 @@ function ObjectDetails({
             className="primary"
             disabled={
               busy ||
-              (approval && !comment.trim()) ||
+              ((approval || node.requiresSignoff) && !comment.trim()) ||
               Object.entries(values).some(([key, value]) => value !== node.values[key])
             }
-            onClick={() => void mutate('complete')}
+            onClick={() => void mutate(node.requiresSignoff ? 'signoff' : 'complete')}
           >
-            {approval ? 'Approve and complete' : 'Mark complete'}
+            {node.requiresSignoff
+              ? 'Sign off parent'
+              : approval
+                ? 'Approve and complete'
+                : 'Mark complete'}
           </button>
         )}
       </div>

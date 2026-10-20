@@ -44,7 +44,7 @@ test('commercial RFQ visibility and pricing are enforced server-side',async({pag
  const suffix=Date.now().toString(36);
  const secret='QA_SECRET_PRICE_'+suffix;
  const project=await page.evaluate(async({suffix,secret})=>{
-  const r=await fetch('/api/projects',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify({type:'commercial',title:'QA Commercial '+suffix,rom:secret,stage:'RFQ'})});
+  const r=await fetch('/api/projects',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify({workflowId:'commercial',type:'commercial',title:'QA Commercial '+suffix,rom:secret,stage:'RFQ'})});
   return {status:r.status,data:await r.json()};
  },{suffix,secret});
  expect(project.status).toBe(201);
@@ -69,3 +69,4 @@ test('commercial RFQ visibility and pricing are enforced server-side',async({pag
  const denied=await page.evaluate(async id=>(await fetch('/api/projects/'+id,{method:'PATCH',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify({pricing:'tampered'})})).status,project.data.project.id);
  expect(denied).toBe(403);
 });
+

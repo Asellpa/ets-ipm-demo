@@ -22,10 +22,11 @@ test('isolated API smoke test: authentication, permissions, project and task lif
   assert.equal(login.status,200,'Seed administrator login failed');
   const cookie=login.headers.get('set-cookie')?.split(';')[0];assert.ok(cookie,'No session cookie');
   const call=async(route,method='GET',body)=>{const r=await fetch(base+'/api'+route,{method,headers:{Cookie:cookie,'Content-Type':'application/json'},body:body?JSON.stringify(body):undefined});return {status:r.status,data:await r.json()}};
+  assert.equal((await call('/missing-route')).status,404);assert.equal((await call('/workflow-templates')).data.protocolVersion,2);assert.equal((await call('/projects','POST',{title:'No workflow',type:'internal_eer'})).status,422);
   let b=await call('/bootstrap');assert.equal(b.status,200);assert.equal(b.data.permissions.manageUsers,true);
   assert.ok(Array.isArray(b.data.projects));
   const users=await call('/admin/users');assert.equal(users.status,200);assert.ok(users.data.users.length>0);
-  const created=await call('/projects','POST',{type:'internal_eer',title:'QA isolated project'});
+  const created=await call('/projects','POST',{workflowId:'eer',type:'internal_eer',title:'QA isolated project'});
   assert.equal(created.status,201,JSON.stringify(created.data));
   const projectId=created.data.project?.id;assert.ok(projectId);
   const task=await call('/tasks','POST',{projectId,title:'QA isolated task',mhEstimate:3});
@@ -44,3 +45,4 @@ test('isolated API smoke test: authentication, permissions, project and task lif
   b=await call('/bootstrap');assert.ok(!b.data.projects.some(p=>p.id===projectId));
  }finally{server.kill();fs.rmSync(data,{recursive:true,force:true})}
 });
+
