@@ -17,7 +17,7 @@ This is the current engineering backlog, not a declaration of complete FRD compl
 | HOST-01 | P1 | Independent demo/staging hosting | Pending | Deploy an isolated demo with persistent data, HTTPS and restricted access, so laptop sleep or tunnel closure does not stop demos. Requires hosting choice and deployment approval; no deployment authorized here. |
 | DEMO-01 | P1 | Demo access and repository privacy | Owner action / verify | Verify current repository visibility; make private if code must not be public. Use unique demo credentials, minimum necessary role permissions and synthetic data. A forwarded URL does not prevent UI copying. |
 | IMPORT-01 | P1 | Native Excel import parity | Missing in React | Current React importer accepts CSV. Implement and test XLSX/XLS/XLSM as required, including sheet selection, internal EER classification and rejected-row validation. |
-| IMPORT-02 | P1 | Source data preservation | Partial / verify | Preserve original tracker rows/columns durably and trace mapped fields back to their source. Confirm handling of fields without dedicated model columns. |
+| IMPORT-02 | P1 | Source data preservation | Implemented for new CSV imports | Original rows, including unmapped columns and original order, are stored in server-only importHistory with submitter, timestamp and WBS-to-record references. API regression verifies persistence and no bootstrap disclosure. Existing imports cannot be reconstructed; original spreadsheet files are not archived. |
 | UX-01 | P1 | Complete user acceptance pass | Pending | Exercise all screens with representative data, narrow windows, keyboard navigation, different roles and realistic task/workflow sizes; log issues in Feedback. |
 | FB-01 | P1 | In-app feedback and review | Implemented; CI verification recorded in commit/run | Header feedback form, optional PNG/JPEG screenshot, page/user/time/server revision, persistent register, own-submission privacy and Manage Feedback review permission; New / In progress / Resolved with reviewer note. |
 | FB-02 | P2 | Feedback email alerts | Not implemented | Choose sender/recipient/provider and notification policy before integrating. No email or external messages are sent by this increment. |
@@ -37,3 +37,7 @@ This is the current engineering backlog, not a declaration of complete FRD compl
 ## Existing verified capabilities
 
 Project/task CRUD, role and user administration, commercial masking, task ownership, saved comments/escalations, reports and exports, CSV preview/import, capacity and leave, task reassignment and notification-bell behavior have selected API/browser regressions. Passing these tests does not remove the pending items above. Existing data and `main` must remain protected; use isolated data for QA.
+
+## Global consistency and scheduling pass — 20 October 2026
+
+Shared form font, control heights, task action grouping and focused user editing implemented. Project, task, work-package and CSV import scheduling rejects invalid calendar dates, years outside 1900–2100 and delivery/due dates before start. Start precedes delivery in project forms. Regression coverage added; UX-01 remains open for the full cross-role, responsive acceptance pass. Runtime workflow execution and production readiness remain pending.

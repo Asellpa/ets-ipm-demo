@@ -12,8 +12,8 @@ const fields:Field[]=[
  {key:'priority',label:'Priority'},
  {key:'status',label:'Status'},
  {key:'scope',label:'Scope',kind:'textarea'},
- {key:'edd',label:'Expected delivery date',kind:'date'},
  {key:'startDate',label:'Start date',kind:'date'},
+ {key:'edd',label:'Expected delivery date',kind:'date'},
  {key:'requiredInputs',label:'Required inputs',kind:'textarea'},
  {key:'deliverables',label:'Deliverables',kind:'textarea'},
  {key:'clientFocal',label:'Client focal point'},
@@ -36,6 +36,7 @@ export default function ProjectEditor({project,canCommercial,canEer,canViewComme
  const[values,setValues]=useState<Record<string,string>>(()=>{
   const initial:Record<string,string>={title:project?.title||'',stage:project?.stage||''};
   for(const field of fields)initial[field.key]=String((project as unknown as Record<string,unknown>|undefined)?.[field.key]??'');
+  if(!project)initial.startDate=new Date().toISOString().slice(0,10);
   for(const field of pricingFields)initial[field.key]=String((project as unknown as {pricing?:Record<string,string>}|undefined)?.pricing?.[field.key]??'');
   return initial;
  });
@@ -43,6 +44,7 @@ export default function ProjectEditor({project,canCommercial,canEer,canViewComme
  const set=(key:string,value:string)=>setValues(current=>({...current,[key]:value}));
  async function submit(e:FormEvent){e.preventDefault();setBusy(true);setError('');
   try{
+   if(values.startDate&&values.edd&&values.edd<values.startDate)throw new Error('Expected delivery date cannot precede start date');
    const payload:Record<string,string>={type,title:values.title.trim()};
    if(canViewCommercialFields||type!=='commercial')payload.stage=values.stage;
    for(const field of fields)if(field.key!=='status'||canViewCommercialFields||type!=='commercial')payload[field.key]=values[field.key]||'';
@@ -57,10 +59,10 @@ export default function ProjectEditor({project,canCommercial,canEer,canViewComme
   <label>Project title<input required maxLength={200} value={values.title} onChange={e=>set('title',e.target.value)}/></label>
   <label>Stage<input disabled={type==='commercial'&&!canViewCommercialFields} value={values.stage} onChange={e=>set('stage',e.target.value)}/></label>
   <h3>Project details</h3>
-  {fields.map(field=><label key={field.key}>{field.label}{field.kind==='textarea'?<textarea value={values[field.key]||''} onChange={e=>set(field.key,e.target.value)}/>:<input disabled={field.key==='status'&&type==='commercial'&&!canViewCommercialFields} type={field.kind==='date'?'date':'text'} value={values[field.key]||''} onChange={e=>set(field.key,e.target.value)}/>}</label>)}
+  {fields.map(field=><label key={field.key}>{field.label}{field.kind==='textarea'?<textarea value={values[field.key]||''} onChange={e=>set(field.key,e.target.value)}/>:<input disabled={field.key==='status'&&type==='commercial'&&!canViewCommercialFields} type={field.kind==='date'?'date':'text'} min={field.kind==='date'?(field.key==='edd'&&values.startDate?values.startDate:'1900-01-01'):undefined} max={field.kind==='date'?'2100-12-31':undefined} value={values[field.key]||''} onChange={e=>set(field.key,e.target.value)}/>}</label>)}
   {type==='commercial'&&canViewCommercialFields&&<><h3>Restricted commercial information</h3>{pricingFields.map(field=><label key={field.key}>{field.label}<textarea value={values[field.key]||''} onChange={e=>set(field.key,e.target.value)}/></label>)}</>}
   {error&&<p role="alert" className="error">{error}</p>}
-  <div className="toolbar"><button type="button" onClick={onCancel}>Cancel</button><button type="submit" disabled={busy||!values.title.trim()}>{busy?'Saving…':'Save project'}</button></div>
+  <div className="form-actions"><button type="button" onClick={onCancel}>Cancel</button><button type="submit" disabled={busy||!values.title.trim()}>{busy?'Saving…':'Save project'}</button></div>
  </form>
 }
 
