@@ -23,7 +23,7 @@ Source of truth: **Department Project & Task Tracking Dashboard — Functional R
 - Two project types: `commercial` and `internal_eer`.
 - Commercial lifecycle: **RFQ → Awarded → In Progress → Escalated → Completed**.
 - Project and Task are separate linked records.
-- ETS tracker WBS hierarchy is retained as **Level 1 Project → Level 2 Sub-department/Work Package → Level 3 Task**.
+- ETS tracker WBS hierarchy is retained as **Level 1 Project → Level 2 Sub-department/Work Package → Level 3 Task**. Verified against the supplied FRD on 20 October 2026: §3 explicitly specifies Project and Task objects; a separate Work Package entity and two creation buttons are not FRD requirements. Work packages are an optional grouping extension retained from the original tracker, available beside Task within a single + Add disclosure.
 - Task fields include assignee, MH estimate, MH actual, status, dependency, remarks/comments and escalation/bottleneck flag.
 - Assignment creates an in-app notification.
 - Internal EER creation by LTSE-and-below automatically notifies at minimum LTSE and Senior Management.
@@ -71,3 +71,4 @@ Do not merge the `security-rbac-qa` branch to `main` until:
 6. Senior Management/LTSE/TSE-JTSE permission matrix is verified against the FRD.
 7. Commercial pricing and RFQ engineering field masking is tested at API level.
 8. Existing Projects, Tasks, EER, Commercial, Capacity, Import/Export, Reports, Notifications and Audit workflows regress cleanly.
+

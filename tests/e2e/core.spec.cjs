@@ -16,7 +16,7 @@ test('login, create internal project, create task, and verify persistence',async
  await page.getByRole('button',{name:'Save project'}).click();
  await expect(page.getByText('Playwright isolated project')).toBeVisible();
  await page.getByRole('button',{name:'Tasks & Work Packages'}).click();
- await page.getByRole('button',{name:'+ New task'}).click();
+ await page.getByRole('button',{name:'+ Add',exact:true}).click();await page.getByRole('button',{name:'New task',exact:true}).click();
  await page.getByLabel('Title').fill('Playwright isolated task');
  await page.getByRole('button',{name:'Save task'}).click();
  await expect(page.getByText('Playwright isolated task')).toBeVisible();

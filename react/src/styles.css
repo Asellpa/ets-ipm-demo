@@ -43,3 +43,14 @@ button { padding: 7px 12px; }
 button:not(.notification-bell):not(.node-select):not(.node-add):not(.icon-button) { min-height: var(--control-height); }
 
 :root input:not([type="checkbox"]):not([type="radio"]):not([type="file"]):not([type="range"]):not([type="color"]):not([type="hidden"]), :root select:not([multiple]) { height: var(--control-height); min-height: var(--control-height); padding: 8px 10px; }
+
+.add-work-menu { position: relative; margin-left: auto; flex-shrink: 0; }
+.add-work-menu > summary { display: flex; align-items: center; gap: 14px; list-style: none; cursor: pointer; min-height: var(--control-height); padding: 7px 12px; border: 1px solid #d7deea; border-radius: 8px; background: white; color: #24334c; font-size: 13px; font-weight: 600; line-height: 20px; }
+.add-work-menu > summary::-webkit-details-marker { display: none; }
+.add-work-menu > summary:hover, .add-work-menu[open] > summary { background: #eef3fa; }
+.add-work-menu > summary:focus-visible { outline: 2px solid #078a8d; outline-offset: 3px; }
+.add-work-options { position: absolute; top: calc(100% + 6px); right: 0; z-index: 30; width: min(290px, calc(100vw - 40px)); padding: 6px; background: white; border: 1px solid #d7deea; border-radius: 10px; box-shadow: 0 10px 30px #183f6826; }
+.add-work-options > button { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; width: 100%; padding: 10px 12px; margin: 0; border: 0; background: white; text-align: left; }
+.add-work-options > button:hover { background: #eef6f6; }
+.add-work-options > button span { font-size: 12px; font-weight: 400; line-height: 1.5; color: #64748b; }
+@media(max-width: 640px) { .add-work-menu { margin-left: 0; } .add-work-options { right: auto; left: 0; } }
