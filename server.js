@@ -140,7 +140,7 @@ function planningDateError(start,end,endLabel='Due date'){
 function projectDateError(p){return planningDateError(p.startDate,p.edd,'Expected delivery date');}
 function taskError(t){if(!String(t.title||'').trim())return 'Task title is required';if(![t.mhActual,t.mhEstimate].every(n=>Number.isFinite(Number(n))&&Number(n)>=0))return 'Man-hours must be finite and non-negative';if(t.flag&&!['Escalation','Bottleneck'].includes(t.flag))return 'Invalid escalation flag';if(t.flag&&!String(t.flagReason||'').trim())return 'A flag reason is required';return planningDateError(t.startDate,t.dueDate);}
 
-function safeTask(t,ps,p){ const x=structuredClone(t); if(p?.type==='commercial' && p?.stage==='RFQ' && !ps.viewRFQEngineering){ for(const k of ['mhEstimate','mhActual','timeEntries','actualOpeningBalance','department','dependency','action','remarks']) delete x[k]; } return x; }
+function safeTask(t,ps,p){ const x=structuredClone(t); if(p?.type==='commercial' && p?.stage==='RFQ' && !ps.viewRFQEngineering){ for(const k of ['mhEstimate','mhActual','timeEntries','actualOpeningBalance','plannedAllocations','department','dependency','action','remarks']) delete x[k]; } return x; }
 function project(db,pid){ return db.projects.find(p=>p.id===pid); }
 function taskLevel(t,p){ if(t.level) return Number(t.level); const rest=String(t.wbs||'').replace(String(p?.wbs||''),'').replace(/^\./,''); return rest?rest.split('.').length+1:1; }
 function nextWbs(db,p,parent){ parent=String(parent||p.wbs); const depth=parent.split('.').length+1; const nums=db.tasks.filter(t=>t.projectId===p.id&&String(t.wbs).startsWith(parent+'.')&&String(t.wbs).split('.').length===depth).map(t=>Number(String(t.wbs).split('.').pop())).filter(Number.isFinite); return `${parent}.${(nums.length?Math.max(...nums):0)+1}`; }
@@ -402,6 +402,7 @@ const server = http.createServer(async(req,res)=>{ let release;try{
     const candidate={...t}; for(const k of allowed)if(Object.hasOwn(b,k))candidate[k]=['mhActual','mhEstimate'].includes(k)?Number(b[k]||0):b[k];
     if(['startDate','dueDate','mhEstimate'].some(k=>Object.hasOwn(b,k)&&b[k]!==t[k])&&!Object.hasOwn(b,'plannedAllocations'))delete candidate.plannedAllocations;
     if(Object.hasOwn(b,'plannedAllocations')) {
+      if(!ps.assignTasks)return send(res,403,{error:'Task assignment permission required to change daily allocations'});
       const entries=b.plannedAllocations;
       if(entries===null)delete candidate.plannedAllocations;
       else {

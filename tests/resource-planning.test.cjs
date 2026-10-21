@@ -18,6 +18,11 @@ test('workflow planning, dated capacity and append-only time logging',async()=>{
   assert.equal((await call('/tasks/'+tid,'PATCH',{plannedAllocations:{'2026-10-18':25}})).status,422);
   assert.equal((await call('/tasks/'+tid,'PATCH',{plannedAllocations:{'2026-10-19':10,'2026-10-20':15}})).status,200);
   const adjusted=(await call('/capacity?start=2026-10-19&days=7')).data.rows.find(r=>r.user==='Stephan');assert.equal(adjusted.cells[0].allocations.find(a=>a.taskId===tid).hours,10);assert.equal(adjusted.cells[1].allocations.find(a=>a.taskId===tid).hours,15);
+  const worker='Hours worker';
+  assert.equal((await call('/admin/users','POST',{name:worker,username:worker,userId:'hours-worker',password:'Testing',profileId:'prof-tse'})).status,201);
+  assert.equal((await call('/tasks/'+tid,'PATCH',{assignee:worker})).status,200);
+  const workerLogin=await fetch(`http://127.0.0.1:${port}/api/login`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({user:worker,id:'hours-worker',password:'Testing'})});assert.equal(workerLogin.status,200);
+  const restricted=await fetch(`http://127.0.0.1:${port}/api/tasks/${tid}`,{method:'PATCH',headers:{Cookie:workerLogin.headers.get('set-cookie').split(';')[0],'Content-Type':'application/json'},body:JSON.stringify({plannedAllocations:{'2026-10-19':10,'2026-10-20':15}})});assert.equal(restricted.status,403);
   const active=nodes.find(n=>n.status==='In progress');const work=await call('/tasks','POST',{projectId:pid,title:'Active work',workflowNodeId:active.id,assignee:'Stephan',mhEstimate:3,mhActual:1});assert.equal(work.status,201);const id=work.data.task.id;
   const entry={entryId:'time-entry-123',date:'2026-10-20',hours:2,description:'Prepared technical details'};
   let logged=await call('/tasks/'+id+'/time-entries','POST',entry);assert.equal(logged.status,201,JSON.stringify(logged));assert.equal(logged.data.task.mhActual,3);assert.equal(logged.data.task.actualOpeningBalance,1);
