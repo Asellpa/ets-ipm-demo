@@ -279,6 +279,14 @@ function canUpdateTask(db, p, user, ps, t) {
   }
   return !editError(db, p, user, ps, node.id) || t.assignee === user.name;
 }
+function canPlanTask(db, p, user, ps, t) {
+  if (!ps.assignTasks) return false;
+  if (!t.workflowNodeId) return true;
+  const instance = db.projectWorkflows?.[p.id];
+  const node = instance?.nodes.find(n => n.id === t.workflowNodeId);
+  return !!node && instance.states[node.id].status !== 'Completed' &&
+    ACCESS.indexOf(access(instance, node, p, user, ps)) >= 2;
+}
 function editError(db, p, user, ps, nodeId) {
   const instance = db.projectWorkflows?.[p.id],
     node = instance?.nodes.find((n) => n.id === nodeId);
@@ -367,6 +375,7 @@ function view(db, p, user, ps) {
           ),
         ),
         blockers: blocked,
+        canPlan: !!ps.assignTasks && ACCESS.indexOf(level) >= 2 && state.status !== "Completed",
         canEdit: ACCESS.indexOf(level) >= 2 && state.status === "In progress",
         canComplete:
           (!requiresSignoff(instance, n) || namedLead(p, user)) &&
@@ -385,6 +394,13 @@ function view(db, p, user, ps) {
           (ps.assignTasks || user.profileId === "prof-admin") &&
           ACCESS.indexOf(level) >= 3 &&
           state.status === "Completed",
+        hours: (() => {
+          const ids = new Set([n.id]);
+          let added = true;
+          while (added) { added = false; for (const child of instance.nodes) if (ids.has(child.parent) && !ids.has(child.id)) { ids.add(child.id); added = true; } }
+          const tasks = db.tasks.filter(t => t.projectId === p.id && Number(t.level || 3) >= 3 && ids.has(t.workflowNodeId) && canRead(db, p, user, ps, t.workflowNodeId));
+          return {estimate: tasks.reduce((v,t) => v + Number(t.mhEstimate || 0),0), actual: tasks.reduce((v,t) => v + Number(t.mhActual || 0),0)};
+        })(),
         tasks: db.tasks
           .filter((t) => t.projectId === p.id && t.workflowNodeId === n.id)
           .map((t) => t.id),
@@ -567,6 +583,7 @@ module.exports = {
   isLead,
   canRead,
   canUpdateTask,
+  canPlanTask,
   editError,
   view,
   transition,

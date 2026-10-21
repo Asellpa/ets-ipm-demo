@@ -140,14 +140,27 @@ function planningDateError(start,end,endLabel='Due date'){
 function projectDateError(p){return planningDateError(p.startDate,p.edd,'Expected delivery date');}
 function taskError(t){if(!String(t.title||'').trim())return 'Task title is required';if(![t.mhActual,t.mhEstimate].every(n=>Number.isFinite(Number(n))&&Number(n)>=0))return 'Man-hours must be finite and non-negative';if(t.flag&&!['Escalation','Bottleneck'].includes(t.flag))return 'Invalid escalation flag';if(t.flag&&!String(t.flagReason||'').trim())return 'A flag reason is required';return planningDateError(t.startDate,t.dueDate);}
 
-function safeTask(t,ps,p){ const x=structuredClone(t); if(p?.type==='commercial' && p?.stage==='RFQ' && !ps.viewRFQEngineering){ for(const k of ['mhEstimate','mhActual','department','dependency','action','remarks']) delete x[k]; } return x; }
+function safeTask(t,ps,p){ const x=structuredClone(t); if(p?.type==='commercial' && p?.stage==='RFQ' && !ps.viewRFQEngineering){ for(const k of ['mhEstimate','mhActual','timeEntries','actualOpeningBalance','department','dependency','action','remarks']) delete x[k]; } return x; }
 function project(db,pid){ return db.projects.find(p=>p.id===pid); }
 function taskLevel(t,p){ if(t.level) return Number(t.level); const rest=String(t.wbs||'').replace(String(p?.wbs||''),'').replace(/^\./,''); return rest?rest.split('.').length+1:1; }
 function nextWbs(db,p,parent){ parent=String(parent||p.wbs); const depth=parent.split('.').length+1; const nums=db.tasks.filter(t=>t.projectId===p.id&&String(t.wbs).startsWith(parent+'.')&&String(t.wbs).split('.').length===depth).map(t=>Number(String(t.wbs).split('.').pop())).filter(Number.isFinite); return `${parent}.${(nums.length?Math.max(...nums):0)+1}`; }
 function diff(a,b,fields){ return fields.filter(k=>JSON.stringify(a[k]??'')!==JSON.stringify(b[k]??'')).map(k=>({field:k,from:a[k]??'',to:b[k]??''})); }
 function mime(p){ return p.endsWith('.css')?'text/css':p.endsWith('.js')?'application/javascript':p.endsWith('.html')?'text/html':'application/octet-stream'; }
 function csv(v){if(typeof v==='string'&&/^[=+@\t\r-]/.test(v))v="'"+v; return `"${String(v??'').replaceAll('"','""')}"`; }
-function spreadHours(startDate,total,max=8){ const result={}; if(!startDate||!Number(total)) return result; let d=new Date(`${startDate}T00:00:00Z`), left=Number(total), guard=0; while(left>0&&guard++<500){ const day=d.getUTCDay(); if(day!==0&&day!==6){ const h=Math.min(max,left); result[d.toISOString().slice(0,10)]=h; left-=h; } d.setUTCDate(d.getUTCDate()+1); } return result; }
+function spreadHours(startDate,total,max=8,dueDate='') {
+  const result={}; if(!startDate || !Number(total)) return result;
+  if(dueDate && dueDate>=startDate) {
+    const dates=[]; let d=new Date(startDate+'T00:00:00Z');
+    while(d.toISOString().slice(0,10)<=dueDate) { if(![0,6].includes(d.getUTCDay()))dates.push(d.toISOString().slice(0,10)); d.setUTCDate(d.getUTCDate()+1); }
+    // Weekend-only work remains visible as a capacity conflict.
+    if(!dates.length)dates.push(startDate);
+    const units=Math.round(Number(total)*10000), base=Math.floor(units/dates.length);
+    dates.forEach((date,i)=>result[date]=(base+(i<units-base*dates.length?1:0))/10000);
+    return result;
+  }
+  let d=new Date(startDate+'T00:00:00Z'),left=Number(total),guard=0;
+  while(left>0&&guard++<75000){if(![0,6].includes(d.getUTCDay())){const h=Math.min(max,left);result[d.toISOString().slice(0,10)]=h;left-=h;}d.setUTCDate(d.getUTCDate()+1);}return result;
+}
 function activeAdminCount(db){ return db.users.filter(u=>u.active && profileOf(db,u)?.permissions?.manageUsers && profileOf(db,u)?.permissions?.manageRoles).length; }
 function profileExists(db,pid){ return db.profiles.some(p=>p.id===pid); }
 function uniqueUserConflict(db,uid,username,userId){ return db.users.some(x=>x.id!==uid && (String(x.username||'').toLowerCase()===String(username||'').trim().toLowerCase() || String(x.userId||'')===String(userId||'').trim())); }
@@ -230,7 +243,7 @@ const server = http.createServer(async(req,res)=>{ let release;try{
     return send(res,200,{user:user.name,userId:user.userId,profile:profileOf(db,user)?.name,permissions:ps,
       users:db.users.filter(x=>x.active).map(x=>({id:x.id,name:x.name,position:x.position,capacity:x.capacity,profileId:x.profileId})),
       projects:visibleProjects.map(p=>safeProject(p,ps)),workflowSummaries:Object.fromEntries(visibleProjects.filter(p=>canReadTask({},ps,p,db,user)&&db.projectWorkflows[p.id]).map(p=>{const w=WF.view(db,p,user,ps);return [p.id,{name:w.name,completed:w.completed,total:w.total,isComplete:w.isComplete,active:w.nodes.filter(n=>!n.parent&&n.status==='In progress').map(n=>n.name)}]})),
-      tasks:db.tasks.filter(t=>visibleIds.has(t.projectId)&&canReadTask(t,ps,pmap[t.projectId],db,user)).map(t=>({...safeTask(t,ps,pmap[t.projectId]),level:taskLevel(t,pmap[t.projectId]),workflowLocked:!!t.workflowNodeId&&!WF.canUpdateTask(db,pmap[t.projectId],user,ps,t)})),
+      tasks:db.tasks.filter(t=>visibleIds.has(t.projectId)&&canReadTask(t,ps,pmap[t.projectId],db,user)).map(t=>({...safeTask(t,ps,pmap[t.projectId]),level:taskLevel(t,pmap[t.projectId]),workflowPlanningAllowed:WF.canPlanTask(db,pmap[t.projectId],user,ps,t),workflowLocked:!!t.workflowNodeId&&!WF.canUpdateTask(db,pmap[t.projectId],user,ps,t)})),
       comments:db.comments.filter(c=>canReadTask(db.tasks.find(t=>t.id===c.taskId),ps,pmap[c.projectId],db,user)), escalations:ps.viewReports?db.escalations.filter(e=>canReadTask(db.tasks.find(t=>t.id===e.taskId),ps,pmap[e.projectId],db,user)):[], notifications, audit:ps.viewAudit?db.audit.filter(a=>workflowAuditVisible(db,a,user,ps)).map(a=>safeAudit(a,ps)):[], leave:db.leave, settings:db.settings});
   }
 
@@ -378,20 +391,55 @@ const server = http.createServer(async(req,res)=>{ let release;try{
   if(req.method==='POST'&&u.pathname==='/api/tasks'){
     if(!ps.createTasks)return send(res,403,{error:'Create Tasks permission required'}); const b=await body(req), p=project(db,b.projectId); if(!p)return send(res,404,{error:'Project not found'});
     if(!canReadTask({},ps,p,db,user))return send(res,403,{error:'Project engineering access required'}); const parent=b.parentWbs||p.wbs; if(parent!==p.wbs&&!db.tasks.some(t=>t.projectId===p.id&&t.wbs===parent&&Number(t.level)===2))return send(res,400,{error:'Invalid parent work package'}); const wbs=nextWbs(db,p,parent), t={id:id('t'),projectId:p.id,wbs,parentWbs:parent,level:3,title:b.title||'New task',department:b.department||'Engineering',assignee:ps.assignTasks?(b.assignee||'Unassigned'):'Unassigned',priority:b.priority||'Normal',status:b.assignee&&b.assignee!=='Unassigned'&&(!b.status||b.status==='To Do')?'Assigned':(b.status||'To Do'),mhEstimate:Number(b.mhEstimate||0),mhActual:Number(b.mhActual||0),startDate:b.startDate||new Date().toISOString().slice(0,10),dueDate:b.dueDate||'',dependency:b.dependency||'',action:b.action||'',remarks:b.remarks||'',flag:b.flag||'',flagReason:b.flagReason||''};
-    if(b.workflowNodeId){if(Number(t.level)===2)return send(res,422,{error:'Link individual tasks, not work package totals, to workflow objects'});const error=WF.editError(db,p,user,ps,b.workflowNodeId);if(error)return send(res,403,{error});t.workflowNodeId=b.workflowNodeId;}
+    if(b.workflowNodeId){if(Number(t.level)===2)return send(res,422,{error:'Link individual tasks, not work package totals, to workflow objects'});const error=WF.editError(db,p,user,ps,b.workflowNodeId);t.workflowNodeId=b.workflowNodeId;if(error&&!(WF.canPlanTask(db,p,user,ps,t)&&['To Do','Assigned'].includes(t.status)&&!t.mhActual))return send(res,403,{error});}
     const validation=taskError(t);if(validation)return send(res,422,{error:validation}); if(t.assignee!=='Unassigned'&&!db.users.some(u=>u.active&&u.name===t.assignee))return send(res,422,{error:'Assignee must be an active team member'});
     if(t.mhActual>t.mhEstimate&&(!['Escalation','Bottleneck'].includes(t.flag)||!String(t.flagReason||'').trim()))return send(res,422,{error:'Actual MH exceeds estimate. Select Escalation or Bottleneck and enter a reason.'});
     if(t.flag)db.escalations.unshift({id:id('e'),taskId:t.id,projectId:t.projectId,type:t.flag,reason:t.flagReason,user:user.name,ts:now()}); db.tasks.push(t);if(t.workflowNodeId)db.projectWorkflows[p.id].revision++; audit(db,user,`Created task ${wbs} — ${t.title}`,{entityType:'task',entityId:t.id,workflowNodeId:t.workflowNodeId,projectId:p.id}); if(t.assignee!=='Unassigned')notify(db,`Task ${wbs} assigned to ${t.assignee}`,[t.assignee]); write(db); return send(res,201,{ok:true,task:safeTask(t,ps,p)});
   }
   if(req.method==='PATCH'&&/^\/api\/tasks\/[^/]+$/.test(u.pathname)){
     const tid=u.pathname.split('/').pop(), t=db.tasks.find(x=>x.id===tid); if(!t)return send(res,404,{error:'Task not found'}); const p=project(db,t.projectId), b=await body(req), before=structuredClone(t);
-    if(!canReadTask(t,ps,p,db,user)||(!ps.assignTasks&&t.assignee!==user.name))return send(res,403,{error:'Only the assignee or a task lead can update this task'}); if(!ps.assignTasks&&['assignee','mhEstimate','title','projectId','startDate','dueDate'].some(k=>Object.hasOwn(b,k)&&b[k]!==t[k]))return send(res,403,{error:'Task assignment permission required'}); const allowed=['status','remarks','dependency']; if(ps.updateActualMH)allowed.push('mhActual'); if(ps.raiseEscalations)allowed.push('flag','flagReason'); if(ps.assignTasks)allowed.push('workflowNodeId','assignee','priority','mhEstimate','dueDate','department','startDate','action','title');
+    if(!canReadTask(t,ps,p,db,user)||(!ps.assignTasks&&t.assignee!==user.name))return send(res,403,{error:'Only the assignee or a task lead can update this task'}); if(!ps.assignTasks&&['assignee','mhEstimate','title','projectId','startDate','dueDate'].some(k=>Object.hasOwn(b,k)&&b[k]!==t[k]))return send(res,403,{error:'Task assignment permission required'}); const allowed=['status','remarks','dependency']; if(ps.updateActualMH)allowed.push('mhActual'); if(ps.raiseEscalations)allowed.push('flag','flagReason'); if(ps.assignTasks)allowed.push('workflowNodeId','assignee','priority','mhEstimate','dueDate','department','startDate','action','title','plannedAllocations');
     const candidate={...t}; for(const k of allowed)if(Object.hasOwn(b,k))candidate[k]=['mhActual','mhEstimate'].includes(k)?Number(b[k]||0):b[k];
+    if(['startDate','dueDate','mhEstimate'].some(k=>Object.hasOwn(b,k)&&b[k]!==t[k])&&!Object.hasOwn(b,'plannedAllocations'))delete candidate.plannedAllocations;
+    if(Object.hasOwn(b,'plannedAllocations')) {
+      const entries=b.plannedAllocations;
+      if(entries===null)delete candidate.plannedAllocations;
+      else {
+        if(!entries||typeof entries!=='object'||Array.isArray(entries)||Object.keys(entries).length>366)return send(res,422,{error:'Use at most 366 daily allocations'});
+        let sum=0;for(const [date,hours] of Object.entries(entries)) {
+          if(!validDate(date)||!candidate.startDate||!candidate.dueDate||date<candidate.startDate||date>candidate.dueDate||typeof hours!=='number'||!Number.isFinite(hours)||hours<=0||hours>24)return send(res,422,{error:'Daily allocations need positive hours up to 24, within the planned start and finish'});
+          sum+=hours;
+        }
+        if(Math.abs(sum-Number(candidate.mhEstimate))>0.0001)return send(res,422,{error:'Daily allocations must add up to the task estimate'});
+        candidate.plannedAllocations=entries;
+      }
+    }
     const validation=taskError(candidate);if(validation)return send(res,422,{error:validation}); if(candidate.assignee!=='Unassigned'&&!db.users.some(u=>u.active&&u.name===candidate.assignee))return send(res,422,{error:'Assignee must be an active team member'}); if(before.assignee!==candidate.assignee&&candidate.assignee!=='Unassigned'&&candidate.status==='To Do')candidate.status='Assigned';
     if(Number(candidate.mhActual)>Number(candidate.mhEstimate)&&(!['Escalation','Bottleneck'].includes(candidate.flag)||!String(candidate.flagReason||'').trim()))return send(res,422,{error:'Actual MH exceeds estimate. Select Escalation or Bottleneck and enter a reason.'});
-    if(t.workflowNodeId){const error=WF.editError(db,p,user,ps,t.workflowNodeId);if(error&&!WF.canUpdateTask(db,p,user,ps,t))return send(res,403,{error});if(!WF.canUpdateTask(db,p,user,ps,t))return send(res,403,{error:'Workflow object is read-only for your profile'});}if(Object.hasOwn(b,'workflowNodeId')){if(!ps.assignTasks)return send(res,403,{error:'Task assignment permission required'});if(b.workflowNodeId){if(Number(t.level)===2)return send(res,422,{error:'Link individual tasks, not work package totals, to workflow objects'});const error=WF.editError(db,p,user,ps,b.workflowNodeId);if(error)return send(res,403,{error});}candidate.workflowNodeId=b.workflowNodeId||'';}
+    const planningOnly=Object.keys(b).every(k=>['assignee','mhEstimate','startDate','dueDate','priority','title','department','plannedAllocations'].includes(k));
+    if(t.timeEntries?.length && Object.hasOwn(b,'mhActual') && Number(b.mhActual)!==Number(t.mhActual))return send(res,409,{error:'Actual hours are calculated from time entries. Log time instead.'});
+    if(t.workflowNodeId&&!WF.canUpdateTask(db,p,user,ps,t)&&!(planningOnly&&WF.canPlanTask(db,p,user,ps,t)))return send(res,403,{error:'Workflow object is locked for execution; only task planning is available'});if(Object.hasOwn(b,'workflowNodeId')){if(!ps.assignTasks)return send(res,403,{error:'Task assignment permission required'});if(b.workflowNodeId){if(Number(t.level)===2)return send(res,422,{error:'Link individual tasks, not work package totals, to workflow objects'});const error=WF.editError(db,p,user,ps,b.workflowNodeId);if(error)return send(res,403,{error});}candidate.workflowNodeId=b.workflowNodeId||'';}
     Object.assign(t,candidate);if(t.workflowNodeId||before.workflowNodeId)db.projectWorkflows[p.id].revision++; const changes=diff(before,t,allowed); if(changes.length){ audit(db,user,`Updated task ${t.wbs}: ${changes.map(c=>c.field).join(', ')}`,{entityType:'task',entityId:t.id,workflowNodeId:t.workflowNodeId,projectId:t.projectId,changes}); if(before.assignee!==t.assignee&&t.assignee)notify(db,`Task ${t.wbs} assigned to ${t.assignee}`,[t.assignee]); if(before.flag!==t.flag||before.flagReason!==t.flagReason){ db.escalations.unshift({id:id('e'),taskId:t.id,projectId:t.projectId,type:t.flag,reason:t.flagReason,user:user.name,ts:now()}); if(t.flag)notify(db,`${t.flag} flagged on ${t.wbs}`,['Senior Management','System Administrator']); } }
     write(db); return send(res,200,{ok:true,task:safeTask(t,ps,p)});
+  }
+  if(req.method==='POST'&&/^\/api\/tasks\/[^/]+\/time-entries$/.test(u.pathname)) {
+    const t=db.tasks.find(t=>t.id===u.pathname.split('/')[3]), b=await body(req);
+    if(!t)return send(res,404,{error:'Task not found'});
+    const p=project(db,t.projectId);
+    if(!ps.updateActualMH||!canReadTask(t,ps,p,db,user)||t.assignee!==user.name||Number(t.level||3)<3)return send(res,403,{error:'Only the assigned team member can log time on an individual task'});
+    if(['Completed','Lost/Cancelled'].includes(t.status)||!WF.canUpdateTask(db,p,user,ps,t))return send(res,403,{error:'Reopen completed work or wait for workflow prerequisites before logging time'});
+    const hours=Number(b.hours), description=String(b.description||'').trim();
+    if(planningDateError(b.date,b.date)||!b.date||b.date>new Date().toISOString().slice(0,10)||!Number.isFinite(hours)||hours<=0||hours>24||!description||description.length>2000)return send(res,422,{error:'Enter a valid date up to today, hours above zero and at most 24, and a description (maximum 2000 characters)'});
+    const entryId=String(b.entryId||''); if(!/^[a-zA-Z0-9-]{8,100}$/.test(entryId))return send(res,422,{error:'A unique time entry reference is required'});
+    if((t.timeEntries||[]).some(e=>e.id===entryId))return send(res,200,{ok:true,task:safeTask(t,ps,p)});
+    const daily=db.tasks.flatMap(t=>t.timeEntries||[]).filter(e=>e.userId===user.id&&e.date===b.date).reduce((sum,e)=>sum+e.hours,0);
+    if(daily+hours>24)return send(res,422,{error:'Daily logged time across tasks cannot exceed 24 hours'});
+    const opening=t.actualOpeningBalance??Number(t.mhActual||0), actual=Math.round((opening+(t.timeEntries||[]).reduce((sum,e)=>sum+e.hours,0)+hours)*10000)/10000;
+    if(actual>Number(t.mhEstimate||0)&&!String(b.overrunReason||t.flagReason||'').trim())return send(res,422,{error:'Actual hours exceed the estimate. An overrun reason is required'});
+    t.actualOpeningBalance=opening; (t.timeEntries||=[]).push({id:entryId,date:b.date,hours,description,userId:user.id,user:user.name,createdAt:now()});t.mhActual=actual;
+    if(actual>Number(t.mhEstimate||0)){t.flag='Escalation';t.flagReason=String(b.overrunReason||t.flagReason).trim();db.escalations.unshift({id:id('e'),taskId:t.id,projectId:p.id,type:t.flag,reason:t.flagReason,user:user.name,ts:now()});notify(db,`Hours exceeded estimate on ${t.wbs}`,['Senior Management','System Administrator']);}
+    if(t.workflowNodeId)db.projectWorkflows[p.id].revision++;
+    audit(db,user,`Logged ${hours} hours on ${t.wbs}`,{entityType:'task',entityId:t.id,projectId:p.id,workflowNodeId:t.workflowNodeId});write(db);return send(res,201,{ok:true,task:safeTask(t,ps,p)});
   }
   if(req.method==='DELETE'&&/^\/api\/tasks\/[^/]+$/.test(u.pathname)){
     if(!ps.createTasks)return send(res,403,{error:'Create Tasks permission required'}); const tid=u.pathname.split('/').pop(), t=db.tasks.find(x=>x.id===tid); if(!t)return send(res,404,{error:'Task not found'});
@@ -408,7 +456,7 @@ const server = http.createServer(async(req,res)=>{ let release;try{
     const start=u.searchParams.get('start')||new Date().toISOString().slice(0,10), days=Math.min(90,Math.max(1,Number(u.searchParams.get('days')||14))), standard=Number(db.settings.standardHoursPerDay||8);
     if(!validDate(start)||!Number.isFinite(days))return send(res,400,{error:'Invalid capacity date or day count'});
     const dates=[]; let d=new Date(`${start}T00:00:00Z`); for(let i=0;i<days;i++){dates.push(d.toISOString().slice(0,10));d.setUTCDate(d.getUTCDate()+1);}
-    const rows=db.users.filter(x=>x.active).map(person=>{ const booked={},allocations={}; for(const t of db.tasks.filter(t=>t.assignee===person.name&&Number(t.level||3)>=3&&!['Completed','Lost/Cancelled'].includes(t.status)&&canReadTask(t,ps,project(db,t.projectId),db,user))){ const spread=spreadHours(t.startDate,Number(t.mhEstimate||0),standard); for(const [dt,h] of Object.entries(spread)){booked[dt]=(booked[dt]||0)+h;(allocations[dt]||=[]).push({taskId:t.id,hours:h});} } const cells=dates.map(date=>{ const leave=db.leave.find(l=>l.user===person.name&&l.date===date); const weekend=[0,6].includes(new Date(`${date}T00:00:00Z`).getUTCDay()); const cap=weekend||leave?0:Number(person.capacity||standard); const used=Number(booked[date]||0); return {date,booked:used,capacity:cap,free:Math.max(0,cap-used),leave:leave?.type||'',allocations:allocations[date]||[]}; }); return {user:person.name,position:person.position,capacity:Number(person.capacity||standard),cells}; });
+    const rows=db.users.filter(x=>x.active).map(person=>{ const booked={},allocations={}; for(const t of db.tasks.filter(t=>t.assignee===person.name&&Number(t.level||3)>=3&&!['Completed','Lost/Cancelled'].includes(t.status)&&canReadTask(t,ps,project(db,t.projectId),db,user))){ const spread=t.plannedAllocations||spreadHours(t.startDate,Number(t.mhEstimate||0),standard,t.dueDate); for(const [dt,h] of Object.entries(spread)){booked[dt]=(booked[dt]||0)+h;(allocations[dt]||=[]).push({taskId:t.id,hours:h});} } const cells=dates.map(date=>{ const leave=db.leave.find(l=>l.user===person.name&&l.date===date); const weekend=[0,6].includes(new Date(`${date}T00:00:00Z`).getUTCDay()); const cap=weekend||leave?0:Number(person.capacity||standard); const used=Number(booked[date]||0); return {date,booked:used,capacity:cap,free:Math.max(0,cap-used),leave:leave?.type||'',allocations:allocations[date]||[]}; }); return {user:person.name,position:person.position,capacity:Number(person.capacity||standard),cells}; });
     return send(res,200,{start,days,rows});
   }
   if(req.method==='POST'&&u.pathname==='/api/leave'){

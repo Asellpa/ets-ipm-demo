@@ -59,3 +59,11 @@ New records select an existing workflow and named lead; object fields are entere
 Parent completion requires an explicit signoff action, non-empty comment and the assigned manager/supervisor; ordinary completion and unassigned administrator sign-off are rejected. Actor ID/name, timestamp and history are stored. Reopening clears current sign-off but keeps history.
 
 JSON compatibility: workflow catalog advertises protocol version 2; creation is disabled when the backend is missing/incompatible. Unknown API routes return JSON 404; frontend non-JSON failures identify the endpoint/status and restart instructions. Compiled Vite preview explicitly proxies /api to port 5174. Tested on isolated data through the compiled preview.
+
+## Workflow resource planning and dated actual hours — 21 October 2026
+
+Implemented: upcoming workflow tasks may be created and scheduled by leads with object edit access; execution, actual hours and comments stay blocked until prerequisites open the object. Completed objects remain locked. Resource Planning → Workload shows unassigned and future tasks, with assignee, estimate, start, finish and optional daily allocations. Default spreading uses weekdays across both dates; no finish date retains the prior standard-day allocation. Custom allocations must total the task estimate and remain within its dates. Leave and weekend bookings remain visible as conflicts.
+
+Assigned users can append dated, described time entries from the project workspace or My Work task details. Actual hours combine a preserved opening balance with entries; direct aggregate edits are rejected after logging begins. Requests are idempotent per task/entry reference, future dates are rejected and entries across tasks cannot exceed 24 hours per user/day. Overruns require a reason and create an escalation. Parents display descendant task estimates/actuals exactly once, excluding work package totals and generic numeric form fields.
+
+Remaining: formal time-entry correction/reversal and approval, automatic rescheduling around leave, historical versioned resource plans, reporting/export of individual time entries (JSON backup contains them), and full owner acceptance. Existing aggregate-only task records retain their legacy actual-hour edit path until their first time entry. No production database migration or real demo data reset performed.

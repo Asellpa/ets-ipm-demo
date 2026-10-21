@@ -1,8 +1,10 @@
+import TimeLog from '../components/TimeLog';
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
 import { request, type Project, type Session, type Task } from '../api';
 import type { ObjectField } from './WorkflowFieldsEditor';
 type History = { action: string; comment: string; user: string; at: string };
 type WorkNode = {
+  hours?: {estimate:number;actual:number};
   id: string;
   name: string;
   type: string;
@@ -23,6 +25,7 @@ type WorkNode = {
   history: History[];
   blockers: string[];
   canEdit: boolean;
+  canPlan?: boolean;
   canComplete: boolean;
   canReopen: boolean;
   tasks: string[];
@@ -41,12 +44,14 @@ function TaskRow({
   task,
   canAssign,
   canUpdate,
+  canLog,
   parentBusy,
   onSaved,
 }: {
   task: Task;
   canAssign: boolean;
   canUpdate: boolean;
+  canLog: boolean;
   parentBusy: boolean;
   onSaved: () => Promise<void>;
 }) {
@@ -61,7 +66,7 @@ function TaskRow({
     try {
       await request('/tasks/' + encodeURIComponent(task.id), {
         method: 'PATCH',
-        body: JSON.stringify({ status, ...(canUpdate ? { mhActual: actual } : {}) }),
+        body: JSON.stringify({ status, ...(canUpdate && !task.timeEntries?.length ? { mhActual: actual } : {}) }),
       });
       await onSaved();
     } catch (e) {
@@ -71,7 +76,7 @@ function TaskRow({
     }
   }
   return (
-    <form className="project-task-row" onSubmit={(e) => void save(e)}>
+    <> <form className="project-task-row" onSubmit={(e) => void save(e)}>
       <div>
         <strong>{task.title}</strong>
         <small>
@@ -100,6 +105,7 @@ function TaskRow({
               Actual hours
               <input
                 aria-label={'Actual hours for ' + task.title}
+                readOnly={!!task.timeEntries?.length}
                 disabled={busy || parentBusy}
                 type="number"
                 min="0"
@@ -117,7 +123,7 @@ function TaskRow({
           {error} Use Tasks &amp; Work Packages to record any required overrun flag and reason.
         </p>
       )}
-    </form>
+    </form>{canLog && !task.workflowLocked && !['Completed','Lost/Cancelled'].includes(task.status||'') && <TimeLog task={task} onSaved={onSaved}/>}</>
   );
 }
 function ObjectDetails({
@@ -233,7 +239,7 @@ function ObjectDetails({
       <div className="toolbar">
         <div>
           <small>{node.type === 'stage' ? 'Lifecycle phase' : node.type}</small>
-          <h2>{node.name}</h2>
+          <h2>{node.name}</h2>{node.hours&&<p>{node.hours.estimate} estimated / {node.hours.actual} actual hours · Includes descendant tasks once</p>}
         </div>
         <span className={'object-status status-' + node.status.toLowerCase().replaceAll(' ', '-')}>
           {node.status}
@@ -335,6 +341,7 @@ function ObjectDetails({
             key={task.id + ':' + task.status + ':' + task.mhActual}
             task={task}
             parentBusy={busy}
+            canLog={task.assignee === data.user && !!data.permissions.updateActualMH && !busy}
             canAssign={node.canEdit && !!data.permissions.assignTasks}
             canUpdate={
               !task.workflowLocked &&
@@ -348,7 +355,7 @@ function ObjectDetails({
       ) : (
         <p className="muted">No tasks linked to this object.</p>
       )}
-      {node.canEdit && data.permissions.createTasks && (
+      {(node.canEdit || node.canPlan) && data.permissions.createTasks && (
         <details className="project-task-add">
           <summary>Add a task to this object</summary>
           <form className="editor" onSubmit={(e) => void addTask(e)}>
