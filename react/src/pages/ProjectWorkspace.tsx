@@ -1,11 +1,12 @@
 import {taskStatuses} from '../project-utils';
 import TimeLog from '../components/TimeLog';
 import ObjectAttachments from '../components/ObjectAttachments';
-import { Fragment, useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
+import { Fragment, useCallback, useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import { request, type Project, type Session, type Task } from '../api';
 import type { ObjectField } from './WorkflowFieldsEditor';
 type History = { action: string; comment: string; user: string; at: string };
-type WorkNode = {
+export type WorkNode = {
+  view?: 'fields' | 'departments' | 'hours';
   hours?: {estimate:number;actual:number};
   id: string;
   name: string;
@@ -42,93 +43,10 @@ type Instance = {
   total: number;
   isComplete: boolean;
 };
-function TaskRow({
-  task,
-  data,
-  canAssign,
-  canUpdate,
-  canLog,
-  parentBusy,
-  onSaved,
-}: {
-  task: Task;
-  data: Session;
-  canAssign: boolean;
-  canUpdate: boolean;
-  canLog: boolean;
-  parentBusy: boolean;
-  onSaved: () => Promise<void>;
-}) {
-  const [status, setStatus] = useState(task.status || 'To Do');
-  const [actual, setActual] = useState(Number(task.mhActual || 0));
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState('');
-  async function save(e: FormEvent) {
-    e.preventDefault();
-    setBusy(true);
-    setError('');
-    try {
-      await request('/tasks/' + encodeURIComponent(task.id), {
-        method: 'PATCH',
-        body: JSON.stringify({ status, ...(canUpdate && !task.timeEntries?.length ? { mhActual: actual } : {}) }),
-      });
-      await onSaved();
-    } catch (e) {
-      setError((e as Error).message);
-    } finally {
-      setBusy(false);
-    }
-  }
-  return (
-    <> <form className="project-task-row" onSubmit={(e) => void save(e)}>
-      <div>
-        <strong>{task.title}</strong>
-        <small>
-          {task.assignee} · {task.mhEstimate || 0} estimated hours · {task.status}
-        </small>
-      </div>
-      {(canAssign || canUpdate) && (
-        <>
-          <label>
-            Status
-            <select
-              aria-label={'Status for ' + task.title}
-              disabled={busy || parentBusy}
-              value={status}
-              onChange={(e) => setStatus(e.target.value)}
-            >
-              {taskStatuses.map(
-                (s) => (
-                  <option key={s}>{s}</option>
-                ),
-              )}
-            </select>
-          </label>
-          {canUpdate && (
-            <label>
-              Actual hours
-              <input
-                aria-label={'Actual hours for ' + task.title}
-                readOnly={!!task.timeEntries?.length}
-                disabled={busy || parentBusy}
-                type="number"
-                min="0"
-                step="0.25"
-                value={actual}
-                onChange={(e) => setActual(Number(e.target.value))}
-              />
-            </label>
-          )}
-          <button disabled={busy || parentBusy}>Save task</button>
-        </>
-      )}
-      {error && (
-        <p className="error" role="alert">
-          {error} Use Tasks &amp; Work Packages to record any required overrun flag and reason.
-        </p>
-      )}
-    </form>{(canLog||!!task.timeEntries?.length)&&<TimeLog task={task} data={data} canLog={canLog} onSaved={onSaved}/>}</>
-  );
+function TaskRow({task,data,canUpdate,canLog,parentBusy,onSaved}:{task:Task;data:Session;canUpdate:boolean;canLog:boolean;parentBusy:boolean;onSaved:()=>Promise<void>}){
+ const [busy,setBusy]=useState(false);const[error,setError]=useState('');
+ async function setStatus(status:string){setBusy(true);setError('');try{await request('/tasks/'+encodeURIComponent(task.id),{method:'PATCH',body:JSON.stringify({status})});await onSaved()}catch(e){setError((e as Error).message)}finally{setBusy(false)}}
+ return <div className="linked-task"><div className="project-task-row"><div><strong>{task.title}</strong><small>{task.assignee} · {task.mhEstimate||0} estimated hours</small></div><label>Status<select aria-label={'Status for '+task.title} disabled={!canUpdate||busy||parentBusy} value={task.status||'To Do'} onChange={e=>void setStatus(e.target.value)}>{[...new Set([...taskStatuses,task.status||'To Do'])].map(status=><option key={status}>{status}</option>)}</select></label></div>{error&&<p className="error" role="alert">{error}</p>}{(canLog||!!task.timeEntries?.length)&&<TimeLog task={task} data={data} canLog={canLog} onSaved={onSaved}/>}</div>;
 }
 function ObjectDetails({
   node,
@@ -136,12 +54,16 @@ function ObjectDetails({
   project,
   data,
   onChange,
+  onDirtyChange,
+  tools,
 }: {
   node: WorkNode;
   instance: Instance;
   project: Project;
   data: Session;
   onChange: () => Promise<void>;
+  onDirtyChange: (dirty:boolean) => void;
+  tools?: ReactNode;
 }) {
   const [values, setValues] = useState(node.values || {});
   const previousValues = useRef(JSON.stringify(node.values || {}));
@@ -151,6 +73,9 @@ function ObjectDetails({
     previousValues.current = JSON.stringify(node.values || {});
   }, [node.values]);
   const [comment, setComment] = useState('');
+  const [saved,setSaved]=useState(false);
+  const changed=Object.entries(values).some(([key,value])=>value!==node.values[key]);
+  useEffect(()=>{onDirtyChange(changed||!!comment.trim());return()=>onDirtyChange(false)},[changed,comment,onDirtyChange]);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const [taskTitle, setTaskTitle] = useState('');
@@ -187,7 +112,7 @@ function ObjectDetails({
           }),
         },
       );
-      await onChange();
+      setComment('');setSaved(true);await onChange();
     } catch (e) {
       setError((e as Error).message);
       await onChange();
@@ -243,18 +168,15 @@ function ObjectDetails({
       <div className="toolbar">
         <div>
           <small>{node.type === 'stage' ? 'Lifecycle phase' : node.type}</small>
-          <h2>{node.name}</h2>{node.hours&&<p>{node.hours.estimate} estimated / {node.hours.actual} actual hours · Includes descendant tasks once</p>}
+          <h2>{node.name}</h2>{node.view!=='hours'&&node.hours&&(node.hours.estimate>0||node.hours.actual>0)&&<p>{node.hours.estimate} estimated / {node.hours.actual} actual hours · Includes descendant tasks once</p>}
         </div>
         <span className={'object-status status-' + node.status.toLowerCase().replaceAll(' ', '-')}>
           {node.status}
         </span>
       </div>
-      <p className="muted">
-        {node.parallelWithPrevious
-          ? 'Runs in parallel with the previous sibling.'
-          : 'Runs after the previous sibling group.'}{' '}
-        Child objects and linked tasks must be complete before this object can finish.
-      </p>
+      {node.status==='Pending'&&<p className="permission-note">Waiting for earlier objects to be signed off. Planning is available only with assignment and object edit access.</p>}
+      {node.status==='In progress'&&!node.canEdit&&<p className="permission-note">This object is read-only with your access profile. Assigned tasks may still allow status updates and time logging.</p>}
+      {tools}
       {node.fields.length > 0 && (
         <form
           className="editor"
@@ -317,7 +239,7 @@ function ObjectDetails({
               )}
             </label></Fragment>
           ))}
-          {node.canEdit && <button disabled={busy}>Save object fields</button>}
+          {node.canEdit && <div className="form-actions"><button disabled={busy||!changed}>Save object fields</button>{saved&&!changed&&<span role="status">Object fields saved</span>}</div>}
         </form>
       )}
       {node.decision && <p role="status">Decision: {node.decision}</p>}
@@ -329,8 +251,7 @@ function ObjectDetails({
       )}
       {node.requiresSignoff && (
         <p className="permission-note">
-          Parent sign-off is compulsory and must be recorded by the assigned project manager or
-          supervisor after all required work is complete.
+          Sign-off: assigned project manager or supervisor, after required work is complete.
         </p>
       )}
       {node.signedOffBy && (
@@ -339,7 +260,7 @@ function ObjectDetails({
           {node.signedOffAt ? ' on ' + new Date(node.signedOffAt).toLocaleString() : ''}.
         </p>
       )}
-      <h3>Linked tasks</h3>
+      {node.view!=='departments'&&<>      {(linked.length>0||((node.canEdit||node.canPlan)&&data.permissions.createTasks))&&<h3>Tasks for this object</h3>}
       {linked.length ? (
         linked.map((task) => (
           <TaskRow
@@ -347,20 +268,13 @@ function ObjectDetails({
             task={task}
             data={data}
             parentBusy={busy}
-            canLog={data.users.find(u=>u.name===data.user)?.resourceEnabled!==false && task.assignee === data.user && !!data.permissions.updateActualMH && !busy}
-            canAssign={node.canEdit && !!data.permissions.assignTasks}
-            canUpdate={
-              data.users.find(u=>u.name===data.user)?.resourceEnabled!==false &&
-              !task.workflowLocked &&
-              node.status === 'In progress' &&
-              !!data.permissions.updateActualMH &&
-              (!!data.permissions.assignTasks || task.assignee === data.user)
-            }
+            canLog={data.users.find(u=>u.name===data.user)?.resourceEnabled!==false && task.assignee === data.user && !!data.permissions.updateActualMH && !task.workflowLocked && !busy}
+            canUpdate={!task.workflowLocked&&(!!data.permissions.assignTasks||task.assignee===data.user)}
             onSaved={onChange}
           />
         ))
       ) : (
-        <p className="muted">No tasks linked to this object.</p>
+        null
       )}
       {(node.canEdit || node.canPlan) && data.permissions.createTasks && (
         <details className="project-task-add">
@@ -402,7 +316,7 @@ function ObjectDetails({
           </form>
         </details>
       )}
-      {node.canEdit && data.permissions.assignTasks && unlinked.length > 0 && (
+      {(node.canEdit||node.canPlan) && data.permissions.assignTasks && unlinked.length > 0 && (
         <div className="project-link-task">
           <label>
             Link an existing task
@@ -424,6 +338,7 @@ function ObjectDetails({
           </button>
         </div>
       )}
+      </>}
       {node.blockers.length > 0 && node.status === 'In progress' && (
         <div className="object-blockers">
           <strong>Before completing this object</strong>
@@ -440,7 +355,7 @@ function ObjectDetails({
           {node.completedAt ? 'on ' + new Date(node.completedAt).toLocaleString() : ''}.
         </p>
       )}
-      {(node.canComplete || node.canReopen || (approval && node.canEdit)) && (
+      {(node.canComplete || node.canReopen) && (
         <label className="project-comment">
           {node.canReopen
             ? 'Reason for reopening'
@@ -487,8 +402,7 @@ function ObjectDetails({
       </div>
       {node.status === 'In progress' && !node.canComplete && !node.blockers.length && (
         <p className="muted">
-          Completion requires the assigned project manager or supervisor and sufficient workflow
-          access.
+          Completion requires the assigned project manager or supervisor, with Complete access for a normal child object or Approve access for a parent or approval.
         </p>
       )}
       {error && (
@@ -518,6 +432,9 @@ export default function ProjectWorkspace({
   data,
   onBack,
   onRefresh,
+  onDirtyChange,
+  renderTools,
+  linkedProjects,
 }: {
   project: Project;
   initialNodeId?: string;
@@ -525,10 +442,16 @@ export default function ProjectWorkspace({
   data: Session;
   onBack: () => void;
   onRefresh: () => Promise<void>;
+  onDirtyChange?: (dirty:boolean) => void;
+  renderTools?: (node:WorkNode,refresh:()=>Promise<void>) => ReactNode;
+  linkedProjects?: ReactNode;
 }) {
   const [instance, setInstance] = useState<Instance | null>(null);
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState(initialNodeId||'');
+  const [showLinks,setShowLinks]=useState(false);const dirty=useRef(false);
+  const reportDirty=useCallback((value:boolean)=>{dirty.current=value;onDirtyChange?.(value)},[onDirtyChange]);
+  function navigate(id?:string){if(id===selected&&!showLinks)return;if(dirty.current&&!window.confirm('Discard unsaved object fields or comment?'))return;reportDirty(false);setShowLinks(!id);if(id)setSelected(id);const body=document.querySelector('.project-popup-body');if(body)body.scrollTop=0;}
   const [error, setError] = useState('');
   const [templates, setTemplates] = useState<{ id: string; name: string }[]>([]);
   const [template, setTemplate] = useState('');
@@ -543,20 +466,21 @@ export default function ProjectWorkspace({
     setSelected((current) =>
       result.workflow?.nodes.some((n) => n.id === current)
         ? current
-        : result.workflow?.nodes.find((n) => n.status === 'In progress')?.id ||
+        : result.workflow?.nodes.find((n) => !n.parent)?.id ||
           result.workflow?.nodes[0]?.id ||
           '',
     );
+    return result;
   }, [project.id]);
   useEffect(() => {
     let active = true;
     async function start() {
       try {
-        await load();
-        const catalog = await request<{ workflows: { id: string; name: string }[] }>(
+        const result=await load();
+        if(!result.workflow&&result.canAttach){const catalog = await request<{ workflows: { id: string; name: string }[] }>(
           '/workflow-templates',
         );
-        if (active) setTemplates(catalog.workflows);
+        if (active) setTemplates(catalog.workflows);}
       } catch (e) {
         if (active) setError((e as Error).message);
       } finally {
@@ -619,7 +543,7 @@ export default function ProjectWorkspace({
   }
   return (
     <>
-      <div className={embedded?"embedded-workflow-toolbar":"toolbar"}>
+      {!embedded&&<><div className="toolbar">
         <button onClick={onBack}>← Project register</button>
         <button
           disabled={busy}
@@ -648,7 +572,7 @@ export default function ProjectWorkspace({
             <dd>{project.stage}</dd>
           </div>
         </dl>
-      </section>
+      </section></>}
       {error && (
         <p className="error" role="alert">
           {error}
@@ -656,7 +580,7 @@ export default function ProjectWorkspace({
       )}
       {loading ? (
         <p>Loading project workflow…</p>
-      ) : !instance ? (
+      ) : !instance ? error ? null : (
         <section className="panel">
           <h2>No workflow attached</h2>
           <p>
@@ -688,32 +612,16 @@ export default function ProjectWorkspace({
         </section>
       ) : (
         <>
-          <div className="panel project-workflow-header">
-            <div>
-              <h2>{instance.name}</h2>
-              <p className="muted">
-                Saved version {instance.version} · {instance.completed} of {instance.total} visible
-                objects complete
-              </p>
-            </div>
-            <strong>
-              {instance.isComplete
-                ? 'Workflow complete'
-                : instance.nodes
-                    .filter((n) => !n.parent && n.status === 'In progress')
-                    .map((n) => n.name)
-                    .join(' + ') || 'Work in progress'}
-            </strong>
-          </div>
           <div className="project-workflow-layout">
-            <nav className="panel project-object-list" aria-label="Project workflow objects">
+            <nav className="panel project-object-list" aria-label="Project workflow objects"><div className="workflow-nav-caption"><strong>{instance.name}</strong><small>{instance.isComplete?'Workflow complete':instance.completed+' / '+instance.total+' objects complete'}</small></div>
               {ordered.map((item) => (
                 <button
                   key={item.id}
-                  className={selected === item.id ? 'selected' : ''}
+                  className={!showLinks&&selected === item.id ? 'selected' : ''}
                   style={{ paddingLeft: 12 + depth(item) * 16 }}
-                  aria-current={selected === item.id ? 'step' : undefined}
-                  onClick={() => setSelected(item.id)}
+                  aria-label={item.name}
+                  aria-current={!showLinks&&selected === item.id ? 'step' : undefined}
+                  onClick={() => navigate(item.id)}
                 >
                   <span>{item.name}</span>
                   <small>
@@ -722,8 +630,10 @@ export default function ProjectWorkspace({
                   </small>
                 </button>
               ))}
+              {linkedProjects&&<button className={'project-utility '+(showLinks?'selected':'')} aria-label="Linked projects" onClick={()=>navigate()}><span>Linked projects</span><small>Related records</small></button>}
+              <details className="workflow-version"><summary>Workflow version</summary><p>{instance.version}</p><p>Object order, fields and access use this project’s saved configuration. Later template edits apply to new projects.</p></details>
             </nav>
-            {node ? (
+            {showLinks? <section className="panel project-object">{linkedProjects}</section> : node ? (
               <ObjectDetails
                 key={node.id + ':' + node.status}
                 node={node}
@@ -731,6 +641,8 @@ export default function ProjectWorkspace({
                 project={project}
                 data={data}
                 onChange={refresh}
+                onDirtyChange={reportDirty}
+                tools={renderTools?.(node,refresh)}
               />
             ) : (
               <section className="panel">

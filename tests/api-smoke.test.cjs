@@ -29,7 +29,7 @@ test('isolated API smoke test: authentication, permissions, project and task lif
   const created=await call('/projects','POST',{workflowId:'eer',type:'internal_eer',title:'QA isolated project'});
   assert.equal(created.status,201,JSON.stringify(created.data));
   const projectId=created.data.project?.id;assert.ok(projectId);
-  const task=await call('/tasks','POST',{projectId,title:'QA isolated task',mhEstimate:3});
+  const task=await call('/tasks','POST',{projectId,workflowNodeId:'phase-0',title:'QA isolated task',mhEstimate:3});
   assert.equal(task.status,201,JSON.stringify(task.data));
   const taskId=task.data.task?.id;assert.ok(taskId);
   const invalid=await call('/tasks/'+taskId,'PATCH',{mhActual:5});

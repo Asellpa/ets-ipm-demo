@@ -17,6 +17,12 @@ function standardNodes() {
 function defaultConfig() {
  return {templateCatalog:{simplifiedProjects:2,commercialTracker:1},workflows:[Tracker.projects(),{id:'eer',name:'Internal',stages:[...LIFECYCLE],objects:[],nodes:standardNodes()}],projectTypes:[{id:'commercial',name:'Projects',workflowId:'commercial'},{id:'internal_eer',name:'Internal',workflowId:'eer'}],register:{},resource:{standardHoursPerDay:8}};
 }
+function nodeView(node) {
+  if(node.view!==undefined)return node.view;
+  if(['execution','phase-2'].includes(node.id))return 'departments';
+  if(['dates-hours','phase-1'].includes(node.id))return 'hours';
+  return 'fields';
+}
 function nodesFor(w) {
   const nodes = w.nodes?.length
     ? structuredClone(w.nodes)
@@ -43,6 +49,7 @@ function nodesFor(w) {
       });
   return nodes.map((n) => ({
     ...n,
+    view: nodeView(n),
     parallelWithPrevious: !!n.parallelWithPrevious,
     requiredFields: n.requiredFields || [],
     taskTemplates: n.taskTemplates || [],
@@ -128,7 +135,9 @@ function validate(w) {
   const nodes = nodesFor(w);
   if (nodes.length > 200 || !nodes.length)
     return "Workflow must contain 1–200 objects";
+  for(const view of ['departments','hours'])if(nodes.filter(n=>n.view===view).length>1)return 'Use only one '+view+' workspace per workflow';
   for (const n of nodes) {
+    if(!['fields','departments','hours'].includes(n.view))return 'Invalid object workspace';
     const fieldError = F.validateSchema({...n,financialRestricted:financialNode(nodes,n)});
     if (fieldError) return fieldError;
     if (
@@ -295,7 +304,7 @@ function blockers(db, p, instance, node) {
   const tasks = db.tasks.filter(
     (t) =>
       t.projectId === p.id &&
-      (t.workflowNodeId === node.id || (instance.workflowId === "commercial" && node.id === "execution")) &&
+      (t.workflowNodeId === node.id || (nodeView(node)==='departments'&&!t.workflowNodeId)) &&
       Number(t.level || 3) >= 3,
   );
   if (tasks.some((t) => !["Completed","Not Required","Lost/Cancelled","No-Go (Client)","No-Go (DOA)","Lost (DOA)"].includes(t.status)))
@@ -345,6 +354,7 @@ function view(db, p, user, ps) {
         id: n.id,
         name: n.name,
         type: n.type,
+        view: nodeView(n),
         parent: n.parent,
         completion: n.completion,
         parallelWithPrevious: n.parallelWithPrevious,
@@ -366,7 +376,7 @@ function view(db, p, user, ps) {
           (!requiresSignoff(instance, n) || namedLead(p, user)) &&
           isLead(p, user) &&
           (ps.assignTasks || user.profileId === "prof-admin") &&
-          ACCESS.indexOf(level) >= 3 &&
+          ACCESS.indexOf(level) >= (requiresSignoff(instance,n)?4:3) &&
           ((!["approval", "signoff"].includes(n.completion) &&
             !["approval", "signoff"].includes(n.type)) ||
             level === "approve" ||
@@ -377,7 +387,7 @@ function view(db, p, user, ps) {
           (!requiresSignoff(instance, n) || namedLead(p, user)) &&
           isLead(p, user) &&
           (ps.assignTasks || user.profileId === "prof-admin") &&
-          ACCESS.indexOf(level) >= 3 &&
+          ACCESS.indexOf(level) >= (requiresSignoff(instance,n)?4:3) &&
           state.status === "Completed",
         hours: (() => {
           const ids = new Set([n.id]);
@@ -470,6 +480,7 @@ function transition(db, p, user, ps, nodeId, b) {
           "Only the assigned project manager or supervisor can complete project objects",
       };
     const parent = requiresSignoff(instance, node);
+    if(parent&&level!=="approve")return {status:403,error:"Approve access is required to sign off or reopen a parent object"};
     if (parent && !namedLead(p, user))
       return {
         status: 403,
@@ -557,6 +568,7 @@ function transition(db, p, user, ps, nodeId, b) {
   return { status: 200 };
 }
 module.exports = {
+  nodeView,
   LIFECYCLE,
   defaultConfig,
   upgradeConfig,

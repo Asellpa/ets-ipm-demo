@@ -115,3 +115,18 @@ Financial account-management checks also reject non-System Administrators creati
 CI infrastructure adjustment: the official Ubuntu runner image already supplies Google Chrome. CI uses Playwright's Chrome channel and verifies that binary, avoiding the stalled duplicate Chromium/apt installation. Local Playwright retains its existing bundled-browser configuration. The full browser suite is still required; no tests are skipped.
 
 Acceptance baseline: commit `82e71d55689bfb23a71dd27593e55da8ec5a82d6`, run `39855202621` passed build, lint, 11 backend tests and all 41 browser tests (1.4 minutes) using the runner Chrome. Final financial mapping guards reject restricted money fields mapped to public register columns, and mask historical bad mappings on project/audit/JSON/CSV reads. Regression includes an isolated legacy snapshot fixture; no live data is modified.
+
+
+## Single configured project navigation and QA — 23 October 2026
+
+Replaced the hard-coded project tabs and duplicated workflow sidebar with one hierarchy in saved configuration order. Projects open the first visible parent. Children follow their parent in configured sibling order. The large repeated workflow status/version banner is removed; compact progress stays in the navigation and the saved version is available on demand. Linked projects is a distinct utility, not a workflow stage.
+
+Object workspace is now an explicit workflow setting: configured fields, departments/tasks, or dates/hours. Stable legacy standard node IDs resolve existing modules without renaming or resetting records; explicit settings override that compatibility default. Each workflow allows at most one department and one hours workspace. Project task creation uses that configured department object, including renamed/custom IDs. Internal upcoming tasks now inherit implementation locks rather than bypassing the workflow as unlinked records. Historical unlinked records remain intact.
+
+Removed the second actual-hours editor from linked task rows: status saves directly, while dated actuals use the existing time log. Global Add department uses the same popup as projects; department removal moves tasks safely. Project deletion is under Project actions. Object field saves indicate success, enable on changes, and unsaved field/comment navigation is guarded. The workflow catalogue is fetched only when an existing record has no workflow to attach.
+
+Permission QA corrections: parent sign-off and reopening require Approve, in addition to named manager/supervisor checks. Complete remains normal child completion only. Task/work-package creation cannot write positive actual hours without Update Actual MH and resource eligibility; unauthorized actual-hour PATCH returns 403. Deletion cannot bypass commercial project visibility by guessing an ID. Pending task relinking/planning uses the same planning checks as creation. User-facing role help now matches those rules.
+
+About the app includes a user guide covering setup, configured order/versioning, object fields, department/task planning, time, capacity, completion, colours, feedback and layered permissions. This private engineering tracker is not rendered in the application.
+
+Validation added: `tests/project-navigation.test.cjs` (configured modules, order snapshots, Complete/Approve distinction, named leads, actual-hours denial, hidden project deletion); `tests/e2e/project-navigation.spec.cjs` (one hierarchy, renamed modules, task linkage, unsaved changes, guide). Full build/lint and 13 backend tests pass locally; complete cross-module browser suite runs in CI on the pushed commit. Remaining production readiness and owner acceptance are not claimed complete.

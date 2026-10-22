@@ -210,6 +210,7 @@ function defaultNodes(names) {
     requiredFields: [],
     taskTemplates: [],
     fields,
+    view: id==='phase-2'?'departments':id==='phase-1'?'hours':'fields',
   });
   return [
     node("phase-0", names[0], "", [

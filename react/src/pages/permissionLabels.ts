@@ -13,7 +13,7 @@ export const permissionLabels:Record<string,{label:string;help:string}> = {
   },
   "viewRFQEngineering": {
     "label": "View RFQ Engineering / MH Fields",
-    "help": "Access task breakdown and MH/engineering fields on Projects before handover before handover. This is deliberately separate from pricing access."
+    "help": "Access task breakdown and MH/engineering fields on Projects before handover. This is deliberately separate from pricing access."
   },
   "createEER": {
     "label": "Create Internal",
@@ -21,15 +21,15 @@ export const permissionLabels:Record<string,{label:string;help:string}> = {
   },
   "editProjects": {
     "label": "Edit Projects",
-    "help": "Change project details and lifecycle."
+    "help": "Change project record details. Workflow object editing and named-lead sign-off have separate checks."
   },
   "deleteProjects": {
     "label": "Delete Projects",
     "help": "Delete projects and child records."
   },
   "createTasks": {
-    "label": "Create Tasks / Work Packages",
-    "help": "Create and delete work packages/tasks."
+    "label": "Create Tasks / Departments",
+    "help": "Create and delete tasks and department groups, subject to workflow access and locks."
   },
   "assignTasks": {
     "label": "Assign Tasks & Estimates",
@@ -37,7 +37,7 @@ export const permissionLabels:Record<string,{label:string;help:string}> = {
   },
   "updateActualMH": {
     "label": "Update Actual MH",
-    "help": "Enter actual man-hours."
+    "help": "Record actual man-hours for an eligible named resource account. Logging dated time is limited to the task assignee."
   },
   "raiseEscalations": {
     "label": "Raise Escalations / Bottlenecks",

@@ -1,0 +1,28 @@
+const {test}=require('node:test'),assert=require('node:assert/strict');
+const WF=require('../workflow-runtime');
+test('configured workspaces preserve order and parent sign-off requires Approve for the named lead',()=>{
+ const manager={id:'lead',name:'Lead',profileId:'custom'},other={id:'other',name:'Other',profileId:'custom'},p={id:'p',type:'internal_eer',managerId:manager.id};
+ const node=(id,name,extra={})=>({id,name,type:'stage',parent:'',completion:'manual',permissions:{custom:'complete'},fields:[],...extra});
+ const template={id:'custom',name:'Configured order',stages:['First','Second'],objects:[],nodes:[node('start','First'),node('work','Second',{view:'departments',parallelWithPrevious:true}),node('child','Child',{parent:'start',type:'object'})]};
+ assert.equal(WF.validate(template),'');const instance=WF.create(template,manager.id),db={tasks:[],projectWorkflows:{p:instance}},ps={assignTasks:true};WF.refresh(instance);
+ let view=WF.view(db,p,manager,ps);assert.deepEqual(view.nodes.map(n=>n.id),['start','work','child']);assert.equal(view.nodes[1].view,'departments');assert.equal(view.nodes[0].canComplete,false);
+ assert.equal(WF.transition(db,p,manager,ps,'work',{action:'signoff',comment:'Reviewed',expectedRevision:instance.revision}).status,403,'Complete is not parent approval');
+ assert.equal(WF.transition(db,p,manager,ps,'child',{action:'complete',expectedRevision:instance.revision}).status,200,'Complete permits named-lead non-parent completion');
+ instance.nodes.find(n=>n.id==='work').permissions.custom='approve';assert.equal(WF.transition(db,p,other,ps,'work',{action:'signoff',comment:'Unassigned bypass',expectedRevision:instance.revision}).status,403);
+ assert.equal(WF.transition(db,p,manager,ps,'work',{action:'signoff',comment:'Reviewed',expectedRevision:instance.revision}).status,200);
+ assert.equal(WF.view(db,p,manager,ps).nodes.find(n=>n.id==='work').canReopen,true);instance.nodes.find(n=>n.id==='work').permissions.custom='complete';assert.equal(WF.view(db,p,manager,ps).nodes.find(n=>n.id==='work').canReopen,false);
+ const invalid=structuredClone(template);invalid.nodes[0].view='departments';assert.match(WF.validate(invalid),/only one departments/);invalid.nodes[0].view='random';assert.match(WF.validate(invalid),/Invalid object workspace/);
+ template.nodes.reverse();assert.deepEqual(instance.nodes.map(n=>n.id),['start','work','child'],'Later template edits cannot rewrite a saved project');
+});
+test('task creation cannot bypass actual-hour permission and custom departments bind workflow tasks',async()=>{
+ const fs=require('node:fs'),os=require('node:os'),path=require('node:path'),{spawn}=require('node:child_process');const root=path.resolve(__dirname,'..'),dir=fs.mkdtempSync(path.join(os.tmpdir(),'ipm-order-')),port=56500+Math.floor(Math.random()*300);fs.copyFileSync(path.join(root,'data/seed.json'),path.join(dir,'seed.json'));const server=spawn(process.execPath,[path.join(root,'server.js')],{env:{...process.env,PORT:String(port),ETS_DATA_DIR:dir},stdio:'ignore'});
+ try{for(let n=0;n<70;n++){try{await fetch(`http://127.0.0.1:${port}/`);break}catch{await new Promise(r=>setTimeout(r,100))}}
+ const call=async(cookie,url,method='GET',body)=>{const r=await fetch(`http://127.0.0.1:${port}/api${url}`,{method,headers:{Cookie:cookie,'Content-Type':'application/json'},body:body?JSON.stringify(body):undefined});return {status:r.status,data:await r.json(),cookie:r.headers.get('set-cookie')?.split(';')[0]}};const admin=(await call('','/login','POST',{user:'Stephan',id:'123',password:'Testing'})).cookie;
+ const profile=(await call(admin,'/admin/profiles','POST',{name:'Planner without actual hours',permissions:{assignTasks:true,createTasks:true,deleteProjects:true}})).data.id;await call(admin,'/admin/users','POST',{name:'Planner',username:'planner',userId:'planner',password:'Testing',profileId:profile});const planner=(await call('','/login','POST',{user:'planner',id:'planner',password:'Testing'})).cookie;
+ const {config}=(await call(admin,'/workflow-config')).data;config.workflows.push({id:'explicit-view',name:'Explicit view',stages:['Setup','Work'],objects:[],nodes:[{id:'setup',name:'Setup',type:'stage',parent:'',completion:'manual',permissions:{},fields:[]},{id:'custom-team-id',name:'Custom work',type:'stage',parent:'',completion:'manual',view:'departments',permissions:{},fields:[]}]});assert.equal((await call(admin,'/workflow-config','PUT',{config})).status,200);
+ const p=(await call(admin,'/projects','POST',{type:'internal_eer',workflowId:'explicit-view',title:'Workflow order'})).data.project;
+ for(const route of ['/tasks','/work-packages'])assert.equal((await call(planner,route,'POST',{projectId:p.id,title:'Attempted actual hours',mhEstimate:4,mhActual:2})).status,403);
+ const task=(await call(planner,'/tasks','POST',{projectId:p.id,title:'Future planned work',mhEstimate:4})).data.task;assert.equal(task.workflowNodeId,'custom-team-id');assert.equal((await call(planner,'/tasks/'+task.id,'PATCH',{status:'Completed'})).status,403,'Pending workflow cannot execute');assert.equal((await call(planner,'/tasks/'+task.id,'PATCH',{mhEstimate:6})).status,200,'Pending workflow can be planned');assert.equal((await call(planner,'/tasks/'+task.id,'PATCH',{mhActual:2})).status,403);
+ const commercial=(await call(admin,'/projects','POST',{type:'commercial',workflowId:'commercial',title:'Not visible to planner'})).data.project;assert.equal((await call(planner,'/projects/'+commercial.id,'DELETE')).status,403,'Delete permission does not grant commercial visibility');
+ }finally{if(server.exitCode===null){server.kill();await new Promise(r=>server.once('exit',r))}fs.rmSync(dir,{recursive:true,force:true})}
+});

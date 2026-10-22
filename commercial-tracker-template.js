@@ -28,7 +28,7 @@ function projects(){
  const old=create(); const sectionNames={'overview':'Project details','aircraft-scope':'Aircraft & scope','contacts':'People & contacts','references':'Programme & references','commercial':'Commercial & quotations','workshare':'Work classification'};
  const fields=old.nodes.filter(n=>sectionNames[n.id]).flatMap(n=>n.fields.map(f=>({...f,section:sectionNames[n.id]}))).filter(f=>!['startDate','requestDate','workshareStatus'].includes(f.id));
  const dates=old.nodes.flatMap(n=>n.fields).filter(f=>['startDate','requestDate','edd','completionDate','workshareStatus'].includes(f.id)).map(f=>({...f,required:false,section:f.type==='date'?'Schedule':'Workshare'}));
- const node=(id,name,fields,parallel=false)=>({id,name,parent:'',type:'stage',completion:'manual',permissions:{},requiredFields:[],taskTemplates:[],fields,parallelWithPrevious:parallel});
+ const node=(id,name,fields,parallel=false)=>({id,name,parent:'',type:'stage',completion:'manual',permissions:{},requiredFields:[],taskTemplates:[],fields,parallelWithPrevious:parallel,view:id==='execution'?'departments':id==='dates-hours'?'hours':'fields'});
  return {id:'commercial',name:'Projects',projectType:'commercial',description:'Project details in Overview, dates and hours together, and tasks grouped by department.',stages:['Overview','Dates & hours','Departments & tasks','Review & closure'],objects:[],nodes:[node('overview','Overview',fields),node('dates-hours','Dates & hours',dates,true),node('execution','Departments & tasks',old.nodes.find(n=>n.id==='implementation').fields,true),node('closure','Review & closure',old.nodes.find(n=>n.id==='closure').fields)]};
 }
 module.exports={id,create,projects};
