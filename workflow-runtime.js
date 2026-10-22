@@ -1,5 +1,6 @@
 const crypto = require("node:crypto");
 const F = require("./workflow-fields");
+const Tracker = require("./commercial-tracker-template");
 const LIFECYCLE = [
   "Overview",
   "Planning",
@@ -14,6 +15,7 @@ function standardNodes() {
 }
 function defaultConfig() {
   return {
+    templateCatalog: {commercialTracker: 1},
     workflows: [
       {
         id: "commercial",
@@ -29,12 +31,13 @@ function defaultConfig() {
         objects: [],
         nodes: standardNodes(),
       },
+      Tracker.create(),
     ],
     projectTypes: [
       {
         id: "commercial",
         name: "Commercial project",
-        workflowId: "commercial",
+        workflowId: Tracker.id,
       },
       { id: "internal_eer", name: "Internal EER", workflowId: "eer" },
     ],
@@ -136,6 +139,12 @@ function upgradeConfig(config) {
       w.stages = nodes.filter((n) => n.type === "stage").map((n) => n.name);
       w.objects = [];
     }
+  }
+  if (!cfg.templateCatalog?.commercialTracker) {
+    if (!cfg.workflows.some(w => w.id === Tracker.id)) cfg.workflows.push(Tracker.create());
+    const commercial = cfg.projectTypes?.find(t => t.id === 'commercial');
+    if(commercial?.workflowId === 'commercial') commercial.workflowId = Tracker.id;
+    cfg.templateCatalog = {...cfg.templateCatalog, commercialTracker: 1};
   }
   return cfg;
 }

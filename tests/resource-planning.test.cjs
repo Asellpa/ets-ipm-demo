@@ -7,6 +7,9 @@ test('workflow planning, dated capacity and append-only time logging',async()=>{
   for(let i=0;i<70;i++){try{await fetch(`http://127.0.0.1:${port}/`);break}catch{await new Promise(r=>setTimeout(r,100))}}
   const login=await fetch(`http://127.0.0.1:${port}/api/login`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({user:'Stephan',id:'123',password:'Testing'})});const cookie=login.headers.get('set-cookie').split(';')[0];
   const call=async(route,method='GET',body)=>{const res=await fetch(`http://127.0.0.1:${port}/api${route}`,{method,headers:{Cookie:cookie,'Content-Type':'application/json'},body:body?JSON.stringify(body):undefined});return {status:res.status,data:await res.json()}};
+  const commercial=await call('/projects','POST',{type:'commercial',workflowId:'commercial-tracker',title:'Commercial template QA'});assert.equal(commercial.status,201,JSON.stringify(commercial));assert.equal(commercial.data.project.status,'Not Started');
+  assert.equal((await call('/projects/'+commercial.data.project.id,'PATCH',{status:'Completed'})).status,409);
+  assert.equal((await call('/projects','POST',{type:'internal_eer',workflowId:'commercial-tracker',title:'Wrong type'})).status,422);
   const created=await call('/projects','POST',{type:'internal_eer',workflowId:'eer',title:'Resource QA'});assert.equal(created.status,201);const pid=created.data.project.id;
   let flow=(await call('/projects/'+pid+'/workflow')).data; const inst=flow.workflow||flow; const nodes=inst.nodes;assert.ok(nodes?.length,JSON.stringify(flow));const pending=nodes.find(n=>n.status==='Pending');assert.ok(pending);
   const made=await call('/tasks','POST',{projectId:pid,title:'Future work',workflowNodeId:pending.id,assignee:'Stephan',mhEstimate:20,startDate:'2026-10-19',dueDate:'2026-10-23'});assert.equal(made.status,201,JSON.stringify(made));const tid=made.data.task.id;

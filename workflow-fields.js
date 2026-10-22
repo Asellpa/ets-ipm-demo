@@ -18,6 +18,7 @@ const PROJECT_FIELDS = new Set([
   "sage",
   "nreStatus",
   "remarks",
+  "requestDate", "doaScope", "customerSupport", "programme", "internalClient", "projectTimeline", "actionItems", "dependency", "completionDate", "taskClassification", "department", "workshareStatus",
 ]);
 const PRICING_FIELDS = new Set([
   "rom",
@@ -25,6 +26,7 @@ const PRICING_FIELDS = new Set([
   "negotiationNotes",
   "offerDetails",
   "agreementDetails",
+  "mhRate", "internalQuote", "purchaseRequest", "internalQuoteStatus", "internalPoStatus", "externalQuoteValue",
 ]);
 const TYPES = new Set([
   "text",
@@ -169,6 +171,7 @@ function validateValues(node, p, ps, values) {
     candidate.edd < candidate.startDate
   )
     return { error: "Expected delivery date cannot precede start date" };
+  if(candidate.completionDate && candidate.startDate && candidate.completionDate<candidate.startDate)return {error:"Completion Date cannot precede Start Date"};
   return { updates, pricing };
 }
 function missingRequired(node, state, p) {

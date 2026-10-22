@@ -67,3 +67,9 @@ Implemented: upcoming workflow tasks may be created and scheduled by leads with 
 Assigned users can append dated, described time entries from the project workspace or My Work task details. Actual hours combine a preserved opening balance with entries; direct aggregate edits are rejected after logging begins. Requests are idempotent per task/entry reference, future dates are rejected and entries across tasks cannot exceed 24 hours per user/day. Overruns require a reason and create an escalation. Parents display descendant task estimates/actuals exactly once, excluding work package totals and generic numeric form fields.
 
 Remaining: formal time-entry correction/reversal and approval, automatic rescheduling around leave, historical versioned resource plans, reporting/export of individual time entries (JSON backup contains them), and full owner acceptance. Existing aggregate-only task records retain their legacy actual-hour edit path until their first time entry. No production database migration or real demo data reset performed.
+
+## Familiar Commercial tracker template and project views — 22 October 2026
+
+Implemented a separate Commercial tracker template from the supplied Trial 14 commercial form and CSV headers, organised into standard lifecycle objects. Pricing/quotes remain restricted. Commercial Grid supports task expansion and hour rollups; Kanban groups by Status, Commercial stage or read-only Workflow phase. Completion cannot bypass object sign-off. Existing snapshots, custom workflow defaults and the Internal EER template are preserved; source customer records were not imported.
+
+Pending: owner acceptance against Stephan's actual day-to-day usage, explicit migration/import mapping of existing customer records if requested, and a corresponding Internal EER template adaptation. Object attachments remain pending.

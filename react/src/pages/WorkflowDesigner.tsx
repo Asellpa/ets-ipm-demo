@@ -2,7 +2,7 @@ import {useState} from 'react';
 import WorkflowFieldsEditor,{fieldsForNode,type ObjectField} from './WorkflowFieldsEditor';
 export type WorkflowProfile={id:string;name:string};
 export type Node={id:string;name:string;type:string;parent:string;completion:string;permissions:Record<string,string>;parallelWithPrevious?:boolean;requiredFields?:string[];fields?:ObjectField[];taskTemplates?:string[];x?:number;y?:number};
-export type Workflow={id:string;name:string;stages:string[];objects:{id:string;name:string;stage:string;parent?:string;permissions?:Record<string,string>}[];nodes?:Node[]};
+export type Workflow={id:string;name:string;projectType?:string;description?:string;stages:string[];objects:{id:string;name:string;stage:string;parent?:string;permissions?:Record<string,string>}[];nodes?:Node[]};
 export type Config={workflows:Workflow[];projectTypes:{id:string;name:string;workflowId:string}[];register:Record<string,unknown>;resource:Record<string,unknown>};
 export const standardStages=['Overview','Planning','Implementation','Review & Approval','Delivery','Closure'];
 export const defaultConfig:Config={workflows:[{id:'commercial',name:'Commercial project',stages:[...standardStages],objects:[]},{id:'eer',name:'Internal EER',stages:[...standardStages],objects:[]}],projectTypes:[{id:'commercial',name:'Commercial project',workflowId:'commercial'},{id:'internal_eer',name:'Internal EER',workflowId:'eer'}],register:{columns:['wbs','title','client','owner','stage']},resource:{standardHoursPerDay:8}};

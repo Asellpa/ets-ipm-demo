@@ -32,6 +32,7 @@ const pricingFields = [
 ] as const;
 export default function ProjectEditor({
   project,
+  initialType,
   canCommercial,
   canEer,
   canViewCommercialFields,
@@ -40,6 +41,7 @@ export default function ProjectEditor({
   onConfigure,
 }: {
   project?: Project;
+  initialType?: string;
   canCommercial: boolean;
   canEer: boolean;
   canViewCommercialFields?: boolean;
@@ -51,14 +53,14 @@ export default function ProjectEditor({
     protocolVersion?: number;
     defaultManagerId?: string;
     projectTypes?: { id: string; workflowId: string }[];
-    workflows: { id: string; name: string }[];
+    workflows: { id: string; name: string; projectType?: string; description?: string }[];
     managers: { id: string; name: string }[];
   }>({ workflows: [], managers: [] });
   const [loaded, setLoaded] = useState(false);
   const [workflowId, setWorkflowId] = useState(project?.workflowId || '');
   const [managerId, setManagerId] = useState(project?.managerId || '');
   const [supervisorId, setSupervisorId] = useState(project?.supervisorId || '');
-  const createType = useRef(project?.type || (canCommercial ? 'commercial' : 'internal_eer'));
+  const createType = useRef(project?.type || initialType || (canCommercial ? 'commercial' : 'internal_eer'));
   const existing = Boolean(project);
   useEffect(() => {
     let active = true;
@@ -89,7 +91,7 @@ export default function ProjectEditor({
     };
   }, [existing]);
   const [type, setType] = useState(
-    project?.type || (canCommercial ? 'commercial' : 'internal_eer'),
+    project?.type || initialType || (canCommercial ? 'commercial' : 'internal_eer'),
   );
   const [values, setValues] = useState<Record<string, string>>(() => {
     const initial: Record<string, string> = {
@@ -195,13 +197,14 @@ export default function ProjectEditor({
           {project?.workflowId && !catalog.workflows.some((w) => w.id === project.workflowId) && (
             <option value={project.workflowId}>Saved project workflow</option>
           )}
-          {catalog.workflows.map((w) => (
+          {catalog.workflows.filter(w=>!w.projectType||w.projectType===type).map((w) => (
             <option key={w.id} value={w.id}>
               {w.name}
             </option>
           ))}
         </select>
       </label>
+      {catalog.workflows.find(w=>w.id===workflowId)?.description&&<p className="field-help">{catalog.workflows.find(w=>w.id===workflowId)?.description}</p>}
       <p className="field-help">
         Create the record here, then fill in its configured object pages. All workflow fields start
         blank. Each parent requires manager or supervisor sign-off.
