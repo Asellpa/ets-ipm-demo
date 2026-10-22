@@ -9,6 +9,7 @@ test('configured workspaces preserve order and parent sign-off requires Approve 
  assert.equal(WF.transition(db,p,manager,ps,'work',{action:'signoff',comment:'Reviewed',expectedRevision:instance.revision}).status,403,'Complete is not parent approval');
  assert.equal(WF.transition(db,p,{id:'system',name:'System',profileId:'prof-admin'},ps,'child',{action:'complete',expectedRevision:instance.revision}).status,403,'System access is not named-lead completion');
  assert.equal(WF.transition(db,p,manager,ps,'child',{action:'complete',expectedRevision:instance.revision}).status,200,'Complete permits named-lead non-parent completion');
+ const child=instance.nodes.find(n=>n.id==='child');child.type='approval';assert.equal(WF.view(db,p,manager,ps).nodes.find(n=>n.id==='child').canReopen,false);assert.equal(WF.transition(db,p,manager,ps,'child',{action:'reopen',comment:'Not an approver',expectedRevision:instance.revision}).status,403);child.type='object';
  instance.nodes.find(n=>n.id==='work').permissions.custom='approve';assert.equal(WF.transition(db,p,other,ps,'work',{action:'signoff',comment:'Unassigned bypass',expectedRevision:instance.revision}).status,403);
  assert.equal(WF.transition(db,p,manager,ps,'work',{action:'signoff',comment:'Reviewed',expectedRevision:instance.revision}).status,200);
  assert.equal(WF.view(db,p,manager,ps).nodes.find(n=>n.id==='work').canReopen,true);instance.nodes.find(n=>n.id==='work').permissions.custom='complete';assert.equal(WF.view(db,p,manager,ps).nodes.find(n=>n.id==='work').canReopen,false);

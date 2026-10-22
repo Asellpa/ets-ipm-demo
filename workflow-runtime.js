@@ -322,6 +322,7 @@ function blockers(db, p, instance, node) {
 function requiresSignoff(instance, node) {
   return !node.parent || instance.nodes.some((n) => n.parent === node.id);
 }
+function requiresApproval(instance,node){return requiresSignoff(instance,node)||["approval","signoff"].includes(node.type)||["approval","signoff"].includes(node.completion);}
 function namedLead(p, user) {
   return [p.managerId, p.supervisorId].includes(user.id);
 }
@@ -375,7 +376,7 @@ function view(db, p, user, ps) {
           (!requiresSignoff(instance, n) || namedLead(p, user)) &&
           isLead(p, user) &&
           (ps.assignTasks || user.profileId === "prof-admin") &&
-          ACCESS.indexOf(level) >= (requiresSignoff(instance,n)?4:3) &&
+          ACCESS.indexOf(level) >= (requiresApproval(instance,n)?4:3) &&
           ((!["approval", "signoff"].includes(n.completion) &&
             !["approval", "signoff"].includes(n.type)) ||
             level === "approve" ||
@@ -386,7 +387,7 @@ function view(db, p, user, ps) {
           (!requiresSignoff(instance, n) || namedLead(p, user)) &&
           isLead(p, user) &&
           (ps.assignTasks || user.profileId === "prof-admin") &&
-          ACCESS.indexOf(level) >= (requiresSignoff(instance,n)?4:3) &&
+          ACCESS.indexOf(level) >= (requiresApproval(instance,n)?4:3) &&
           state.status === "Completed",
         hours: (() => {
           const ids = new Set([n.id]);
@@ -479,7 +480,7 @@ function transition(db, p, user, ps, nodeId, b) {
           "Only the assigned project manager or supervisor can complete project objects",
       };
     const parent = requiresSignoff(instance, node);
-    if(parent&&level!=="approve")return {status:403,error:"Approve access is required to sign off or reopen a parent object"};
+    if(requiresApproval(instance,node)&&level!=="approve")return {status:403,error:"Approve access is required for parent sign-off and approval objects, including reopening"};
     if (parent && !namedLead(p, user))
       return {
         status: 403,

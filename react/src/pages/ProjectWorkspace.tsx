@@ -107,7 +107,7 @@ function ObjectDetails({
           body: JSON.stringify({
             action,
             expectedRevision: instance.revision,
-            ...(action === 'save' ? { values } : {}),
+            ...(action === 'save' ? { values:Object.fromEntries(Object.entries(values).filter(([key,value])=>value!==node.values[key])) } : {}),
             comment,
           }),
         },
