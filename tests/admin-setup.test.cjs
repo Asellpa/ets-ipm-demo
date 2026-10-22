@@ -15,6 +15,7 @@ test('one-time demo setup, private credential hash, owner validation and Admin p
   const login=await call('','/login','POST',{user:'sysadmin',id:'1309',password});assert.equal(login.status,200);const system=login.cookie,admin=(await call('','/login','POST',{user:'Stephan',id:'123',password:'Testing'})).cookie;assert.ok(admin);
   const bootstrap=(await call(admin,'/bootstrap')).data;assert.equal(bootstrap.permissions.manageUsers,true);assert.equal(bootstrap.permissions.manageRoles,false);assert.equal(bootstrap.projects.length,0);
   const stephan=db.users.find(u=>(u.username||u.name)==='Stephan');
+  assert.equal((await call(admin,'/admin/users/'+stephan.id,'PATCH',{profileId:'prof-app-admin',capacity:8})).status,200,'Admin can save their own unchanged role');
   for(const [route,method,body] of [
    ['/admin/users','POST',{name:'Escalation',username:'evil',userId:'evil',password:'Testing',profileId:'prof-admin'}],
    ['/users','POST',{name:'Escalation',profileId:'prof-admin'}],

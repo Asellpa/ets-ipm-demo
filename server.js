@@ -295,7 +295,7 @@ const server = http.createServer(async(req,res)=>{ let release;try{
     if(Object.hasOwn(b,'profileId')&&!profileExists(db,b.profileId))return send(res,400,{error:'Assigned profile does not exist'});
     if(isSystemAdmin(target)&&(b.active===false||(b.profileId&&b.profileId!=='prof-admin'))&&db.users.filter(x=>x.active&&isSystemAdmin(x)).length<=1)return send(res,400,{error:'At least one active System Administrator must remain'});
     const wouldDeactivate=Object.hasOwn(b,'active')&&b.active===false;
-    const wouldLoseAdmin=Object.hasOwn(b,'profileId')&&(!db.profiles.find(p=>p.id===b.profileId)?.permissions?.manageUsers||!db.profiles.find(p=>p.id===b.profileId)?.permissions?.manageRoles);
+    const wouldLoseAdmin=Object.hasOwn(b,'profileId')&&b.profileId!==target.profileId&&(!db.profiles.find(p=>p.id===b.profileId)?.permissions?.manageUsers||!db.profiles.find(p=>p.id===b.profileId)?.permissions?.manageRoles);
     if(target.id===user.id&&(wouldDeactivate||wouldLoseAdmin))return send(res,400,{error:'You cannot deactivate your own account or remove your own administrator access'});
     if(target.active&&profileOf(db,target)?.permissions?.manageUsers&&profileOf(db,target)?.permissions?.manageRoles&&(wouldDeactivate||wouldLoseAdmin)&&activeAdminCount(db)<=1)return send(res,400,{error:'At least one active administrator must remain'});
     for(const k of ['name','username','userId','email','position','profileId'])if(Object.hasOwn(b,k))target[k]=String(b[k]).trim();
