@@ -382,11 +382,11 @@ function ObjectDetails({
             Reject
           </button>
         )}
-        {node.canComplete && (
+        {(node.canComplete || (node.requiresSignoff && node.status !== 'Completed')) && (
           <button
             className="primary"
             disabled={
-              busy ||
+              busy || !node.canComplete ||
               ((approval || node.requiresSignoff) && !comment.trim()) ||
               Object.entries(values).some(([key, value]) => value !== node.values[key])
             }
@@ -400,7 +400,7 @@ function ObjectDetails({
           </button>
         )}
       </div>
-      {node.status === 'In progress' && !node.canComplete && !node.blockers.length && (
+      {node.requiresSignoff && node.status !== 'Completed' && !node.canComplete && (
         <p className="muted">
           Completion requires the assigned project manager or supervisor, with Complete access for a normal child object or Approve access for a parent or approval.
         </p>
