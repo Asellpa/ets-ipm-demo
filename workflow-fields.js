@@ -1,5 +1,6 @@
 const {financialField}=require('./financial-access');
 const {isResource}=require('./resource-policy');
+const {fieldAccess}=require('./field-access');
 const PROJECT_FIELDS = new Set([
   "title",
   "client",
@@ -55,11 +56,11 @@ function fieldsFor(node) {
         field(label, label, "textarea", true),
       );
 }
-function visibleFields(node, p, ps) {
+function visibleFields(node, p, ps, profileId) {
   return fieldsFor(node).filter(
     (f) =>
-      !financialField(f,node) ||
-      (p.type === "commercial" && ps.viewCommercialFields),
+      fieldAccess(f,profileId)!=='hidden'&&(!financialField(f,node) ||
+      (p.type === "commercial" && ps.viewCommercialFields)),
   );
 }
 function applies(f, p, node) {
@@ -87,6 +88,7 @@ function validateSchema(node) {
     )
       return "Invalid or duplicate object field";
     if(f.section!==undefined&&(typeof f.section!=="string"||f.section.length>120))return "Invalid field section";
+    if(f.permissions!==undefined&&(!f.permissions||typeof f.permissions!=='object'||Array.isArray(f.permissions)||Object.values(f.permissions).some(v=>!['hidden','view','edit'].includes(v))))return "Invalid field role permissions";
     ids.add(f.id);
     if (["user","users"].includes(f.type)&&f.projectField)return "Team fields cannot map to text project fields";
     if (
@@ -128,7 +130,7 @@ function validDate(value) {
     new Date(value).toISOString().slice(0, 10) === value
   );
 }
-function validateValues(node, p, ps, values, users) {
+function validateValues(node, p, ps, values, users, profileId) {
   if (!values || typeof values !== "object" || Array.isArray(values))
     return { error: "Invalid object field values" };
   const updates = {},
@@ -136,7 +138,7 @@ function validateValues(node, p, ps, values, users) {
   for (const [id, value] of Object.entries(values)) {
     const f = fieldsFor(node).find((f) => f.id === id);
     if (!f) return { error: "Unknown object field" };
-    if (!visibleFields(node, p, ps).some((v) => v.id === id))
+    if (!visibleFields(node, p, ps, profileId).some((v) => v.id === id)||fieldAccess(f,profileId)==='view')
       return {
         error: "You do not have permission to update one or more fields",
         status: 403,
@@ -283,6 +285,7 @@ function defaultNodes(names) {
   ];
 }
 module.exports = {
+  isPricingField:key=>PRICING_FIELDS.has(key),
   fieldsFor,
   visibleFields,
   validateSchema,

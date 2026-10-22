@@ -190,10 +190,10 @@ function ObjectDetails({
               {field.label}
               {field.required ? ' *' : ''}
               {field.type==='users'&&<small className="field-help">Select one or more people. Use Ctrl or Command to select multiple names.</small>}
-              {field.type==='user'||field.type==='users' ? (<select aria-label={field.label} multiple={field.type==='users'} disabled={!node.canEdit||busy} value={field.type==='users'?(()=>{try{return JSON.parse(values[field.id]||'[]') as string[]}catch{return []}})():(values[field.id]||'')} onChange={e=>setValues(current=>({...current,[field.id]:field.type==='users'?JSON.stringify(Array.from(e.target.selectedOptions,o=>o.value)):e.target.value}))}>{field.type==='user'&&<option value="">Select team member…</option>}{data.users.filter(u=>u.resourceEnabled!==false).map(u=><option key={u.id} value={u.id}>{u.name}</option>)}</select>) : field.projectField === 'owner' ? (<select aria-label={field.label} disabled={!node.canEdit||busy} value={values[field.id]||''} onChange={e=>setValues(current=>({...current,[field.id]:e.target.value}))}><option value="">Select owner…</option>{values[field.id]&&!data.users.some(u=>u.name===values[field.id])&&<option disabled value={values[field.id]}>{values[field.id]} (unavailable)</option>}{data.users.map(u=><option key={u.id} value={u.name}>{u.name}</option>)}</select>) : field.type === 'textarea' ? (
+              {field.type==='user'||field.type==='users' ? (<select aria-label={field.label} multiple={field.type==='users'} disabled={!node.canEdit||field.canEdit===false||busy} value={field.type==='users'?(()=>{try{return JSON.parse(values[field.id]||'[]') as string[]}catch{return []}})():(values[field.id]||'')} onChange={e=>setValues(current=>({...current,[field.id]:field.type==='users'?JSON.stringify(Array.from(e.target.selectedOptions,o=>o.value)):e.target.value}))}>{field.type==='user'&&<option value="">Select team member…</option>}{data.users.filter(u=>u.resourceEnabled!==false).map(u=><option key={u.id} value={u.id}>{u.name}</option>)}</select>) : field.projectField === 'owner' ? (<select aria-label={field.label} disabled={!node.canEdit||field.canEdit===false||busy} value={values[field.id]||''} onChange={e=>setValues(current=>({...current,[field.id]:e.target.value}))}><option value="">Select owner…</option>{values[field.id]&&!data.users.some(u=>u.name===values[field.id])&&<option disabled value={values[field.id]}>{values[field.id]} (unavailable)</option>}{data.users.map(u=><option key={u.id} value={u.name}>{u.name}</option>)}</select>) : field.type === 'textarea' ? (
                 <textarea
                   aria-label={field.label}
-                  disabled={!node.canEdit || busy}
+                  disabled={!node.canEdit || field.canEdit===false || busy}
                   value={values[field.id] || ''}
                   onChange={(e) =>
                     setValues((current) => ({ ...current, [field.id]: e.target.value }))
@@ -202,7 +202,7 @@ function ObjectDetails({
               ) : field.type === 'select' ? (
                 <select
                   aria-label={field.label}
-                  disabled={!node.canEdit || busy}
+                  disabled={!node.canEdit || field.canEdit===false || busy}
                   value={values[field.id] || ''}
                   onChange={(e) =>
                     setValues((current) => ({ ...current, [field.id]: e.target.value }))
@@ -217,7 +217,7 @@ function ObjectDetails({
                 <input
                   aria-label={field.label}
                   type="checkbox"
-                  disabled={!node.canEdit || busy}
+                  disabled={!node.canEdit || field.canEdit===false || busy}
                   checked={values[field.id] === 'true'}
                   onChange={(e) =>
                     setValues((current) => ({ ...current, [field.id]: String(e.target.checked) }))
@@ -230,7 +230,7 @@ function ObjectDetails({
                   min={field.type === 'date' ? '1900-01-01' : field.min}
                   max={field.type === 'date' ? '2100-12-31' : undefined}
                   step={field.type === 'number' ? 'any' : undefined}
-                  disabled={!node.canEdit || busy}
+                  disabled={!node.canEdit || field.canEdit===false || busy}
                   value={values[field.id] || ''}
                   onChange={(e) =>
                     setValues((current) => ({ ...current, [field.id]: e.target.value }))

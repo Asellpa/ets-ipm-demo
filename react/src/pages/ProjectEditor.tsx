@@ -130,7 +130,7 @@ export default function ProjectEditor({
         throw new Error('Assign a project manager or supervisor for parent sign-off');
       const payload: Record<string, string> = {
         type,
-        title: values.title.trim() || 'Untitled project',
+        ...(!project||!project.fieldAccess?.title||project.fieldAccess.title==='edit'?{title:values.title.trim()||'Untitled project'}:{}),
         ...(!project
           ? { workflowId, managerId, supervisorId }
           : {
@@ -245,6 +245,7 @@ export default function ProjectEditor({
         Record name (optional)
         <input
           maxLength={200}
+          disabled={!!project?.fieldAccess?.title&&project.fieldAccess.title!=='edit'}
           value={values.title}
           onChange={(e) => set('title', e.target.value)}
         />

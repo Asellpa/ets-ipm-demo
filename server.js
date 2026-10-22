@@ -33,22 +33,10 @@ function profilePermissionError(value){
 }
 const WORKFLOW_ACCESS = new Set(['hidden','view','edit','complete','approve']);
 function normalizeWorkflowPermissions(config,profiles){
-  if(!config)return null;
-  const cfg=structuredClone(config);
-  for(const w of cfg.workflows||[])for(const item of [...(w.nodes||[]),...(w.objects||[])]){
-    if(item.permissions===undefined)continue;
-    if(!item.permissions||typeof item.permissions!=='object'||Array.isArray(item.permissions))throw Error('Workflow profile permissions must be an object');
-    const result={};
-    for(const [key,value] of Object.entries(item.permissions)){
-      const profile=profiles.find(p=>p.id===key)||profiles.find(p=>p.name===key);
-      if(!profile)throw Error('Workflow references an unknown profile: '+key);
-      if(!WORKFLOW_ACCESS.has(value))throw Error('Invalid workflow access for '+profile.name+': '+value);
-      // Stable profile IDs take precedence over old name-based keys.
-      if(key===profile.id||!Object.hasOwn(result,profile.id))result[profile.id]=value;
-    }
-    item.permissions=result;
-  }
-  return cfg;
+ if(!config)return null;const cfg=structuredClone(config);
+ function normalise(item,allowed){if(item.permissions===undefined)return;if(!item.permissions||typeof item.permissions!=='object'||Array.isArray(item.permissions))throw Error('Permissions must be an object');const result={};for(const [key,value] of Object.entries(item.permissions)){const profile=profiles.find(p=>p.id===key)||profiles.find(p=>p.name===key);if(!profile)throw Error('Workflow references an unknown profile: '+key);if(!allowed.has(value))throw Error('Invalid workflow access for '+profile.name+': '+value);if(key===profile.id||!Object.hasOwn(result,profile.id))result[profile.id]=profile.id==='prof-admin'?(allowed.has('approve')?'approve':'edit'):value;}item.permissions=result;}
+ for(const w of cfg.workflows||[])for(const item of [...(w.nodes||[]),...(w.objects||[])]){normalise(item,WORKFLOW_ACCESS);for(const field of item.fields||[])normalise(field,new Set(['hidden','view','edit']));}
+ return cfg;
 }
 const DEFAULT_PROFILE_IDS = new Set(DEFAULT_PROFILES.map(p => p.id));
 
@@ -108,8 +96,8 @@ function send(res,code,obj,type='application/json',extra={}){ const out=type==='
 function requireAuth(req,res){ const db=read(), user=currentUser(req,db); if(!user){ send(res,401,{error:'Authentication required'}); return null; } return {db,user,profile:profileOf(db,user),permissions:perms(db,user)}; }
 function audit(db,user,text,meta={}){ db.audit.unshift({id:id('a'),ts:now(),user:user?.name||'System',role:profileOf(db,user)?.name||'',text,...meta});  }
 function notify(db,text,recipients=['All']){ db.notifications.unshift({id:id('n'),ts:now(),text,recipients,readBy:[]});  }
-function safeProject(p,ps,db){ const x=structuredClone(p);if(!ps.viewCommercialFields)for(const key of require('./financial-access').financialMappings(db?.projectWorkflows?.[p.id]?.nodes)){if(key==='title')x.title='Project '+p.wbs;else delete x[key];} if(p.type!=='commercial'||!ps.viewCommercialFields)for(const k of ['pricing','rom','poStatus','negotiationNotes','offerDetails','agreementDetails'])delete x[k]; if(p.type==='commercial'&&p.stage==='RFQ'&&!ps.viewRFQEngineering)for(const k of ['scope','requiredInputs','deliverables','remarks'])delete x[k];return x; }
-function safeAudit(a,ps,db){const x=structuredClone(a);if(!ps.viewCommercialFields&&x.changes){const keys=require('./financial-access').financialMappings(db?.projectWorkflows?.[a.projectId||a.entityId]?.nodes);x.changes=x.changes.filter(c=>!keys.has(c.field));}if(!ps.viewCommercialFields&&x.changes)x.changes=x.changes.filter(c=>!['pricing','rom','poStatus','negotiationNotes','offerDetails','agreementDetails'].includes(c.field));return x;}
+function safeProject(p,ps,db,user){ const x=structuredClone(p);const access=require('./field-access').mappedAccess(db,p,user,ps,WF);x.fieldAccess=access;for(const [key,level]of Object.entries(access))if(level==='hidden'){if(key==='title')x.title='Project '+p.wbs;else delete x[key];if(x.pricing)delete x.pricing[key];}if(!ps.viewCommercialFields)for(const key of require('./financial-access').financialMappings(db?.projectWorkflows?.[p.id]?.nodes)){if(key==='title')x.title='Project '+p.wbs;else delete x[key];} if(p.type!=='commercial'||!ps.viewCommercialFields)for(const k of ['pricing','rom','poStatus','negotiationNotes','offerDetails','agreementDetails'])delete x[k]; if(p.type==='commercial'&&p.stage==='RFQ'&&!ps.viewRFQEngineering)for(const k of ['scope','requiredInputs','deliverables','remarks'])delete x[k];return x; }
+function safeAudit(a,ps,db,user){const x=structuredClone(a);const p=project(db,a.projectId||a.entityId);if(p&&x.changes){const access=require('./field-access').mappedAccess(db,p,user,ps,WF);x.changes=x.changes.filter(c=>access[c.field]!=='hidden'&&!(c.field==='pricing'&&Object.keys(p.pricing||{}).some(key=>access[key]==='hidden')));}if(!ps.viewCommercialFields&&x.changes){const keys=require('./financial-access').financialMappings(db?.projectWorkflows?.[a.projectId||a.entityId]?.nodes);x.changes=x.changes.filter(c=>!keys.has(c.field));}if(!ps.viewCommercialFields&&x.changes)x.changes=x.changes.filter(c=>!['pricing','rom','poStatus','negotiationNotes','offerDetails','agreementDetails'].includes(c.field));return x;}
 function canReadTask(t,ps,p,db,user){return !!t&&!!p&&(p.type!=='commercial'||(ps.viewCommercial&&(p.stage!=='RFQ'||ps.viewRFQEngineering)))&&(!t.workflowNodeId||!db||WF.canRead(db,p,user,ps,t.workflowNodeId));}
 function validDate(v){return typeof v==='string'&&/^\d{4}-\d{2}-\d{2}$/.test(v)&&!Number.isNaN(Date.parse(v))&&new Date(v).toISOString().slice(0,10)===v;}
 function planningDateError(start,end,endLabel='Due date'){
@@ -176,15 +164,16 @@ const server = http.createServer(async(req,res)=>{ let release;try{
   if(u.pathname.startsWith('/api/')){ A=requireAuth(req,res); if(!A)return; }
   const db=A?.db, user=A?.user, ps=A?.permissions||{};
 
+  if(await require('./field-configuration').handle({req,res,url:u,db,user,ps,WF,body,send,audit,write,normalizeWorkflowPermissions}))return;
   // Shared workflow configuration; server validates references and requires administrator access to edit.
   if(u.pathname==='/api/workflow-config'){
     if(req.method==='GET'){
       if(!ps.manageSettings)return send(res,403,{error:'Manage Settings permission required'});
-      let config;try{config=normalizeWorkflowPermissions(db.workflowConfig,db.profiles)}catch(e){return send(res,400,{error:e.message})}return send(res,200,{config,profiles:db.profiles.map(p=>({id:p.id,name:p.name})),runtimeEnforced:true});
+      let config;try{config=normalizeWorkflowPermissions(db.workflowConfig,db.profiles)}catch(e){return send(res,400,{error:e.message})}return send(res,200,{version:require('./field-configuration').version(db),config,profiles:db.profiles.map(p=>({id:p.id,name:p.name})),runtimeEnforced:true});
     }
     if(req.method==='PUT'){
       if(!ps.manageSettings)return send(res,403,{error:'Manage Settings permission required'});
-      const payload=await body(req),cfg=payload.config;
+      const payload=await body(req),cfg=payload.config;if(payload.expectedVersion!==undefined&&payload.expectedVersion!==require('./field-configuration').version(db))return send(res,409,{error:'Project settings changed. Reload workflows before saving.'});
       if(cfg)cfg.templateCatalog={...db.workflowConfig.templateCatalog,...cfg.templateCatalog};
       if(!cfg||!Array.isArray(cfg.workflows)||!Array.isArray(cfg.projectTypes)||!cfg.register||!cfg.resource)return send(res,400,{error:'Invalid workflow configuration'});
       const ids=new Set(cfg.workflows.map(w=>w.id));
@@ -248,9 +237,9 @@ const server = http.createServer(async(req,res)=>{ let release;try{
     return send(res,200,{user:user.name,userId:user.userId,profile:profileOf(db,user)?.name,permissions:ps,
       users:db.users.filter(x=>x.active).map(x=>({id:x.id,name:x.name,position:x.position,capacity:x.capacity,resourceEnabled:isResource(x),profileId:x.profileId})),
       projectLinks:db.projectLinks.filter(l=>[l.projectId,l.linkedProjectId].every(pid=>visibleIds.has(pid)&&canReadTask({},ps,pmap[pid],db,user))),
-      projects:visibleProjects.map(p=>safeProject(p,ps,db)),workflowSummaries:Object.fromEntries(visibleProjects.filter(p=>canReadTask({},ps,p,db,user)&&db.projectWorkflows[p.id]).map(p=>{const w=WF.view(db,p,user,ps);return [p.id,{name:w.name,completed:w.completed,total:w.total,isComplete:w.isComplete,active:w.nodes.filter(n=>!n.parent&&n.status==='In progress').map(n=>n.name)}]})),
+      projects:visibleProjects.map(p=>safeProject(p,ps,db,user)),workflowSummaries:Object.fromEntries(visibleProjects.filter(p=>canReadTask({},ps,p,db,user)&&db.projectWorkflows[p.id]).map(p=>{const w=WF.view(db,p,user,ps);return [p.id,{name:w.name,completed:w.completed,total:w.total,isComplete:w.isComplete,active:w.nodes.filter(n=>!n.parent&&n.status==='In progress').map(n=>n.name)}]})),
       tasks:db.tasks.filter(t=>visibleIds.has(t.projectId)&&canReadTask(t,ps,pmap[t.projectId],db,user)).map(t=>({...safeTask(t,ps,pmap[t.projectId]),level:taskLevel(t,pmap[t.projectId]),workflowPlanningAllowed:WF.canPlanTask(db,pmap[t.projectId],user,ps,t),workflowLocked:!!t.workflowNodeId&&!WF.canUpdateTask(db,pmap[t.projectId],user,ps,t)})),
-      comments:db.comments.filter(c=>canReadTask(db.tasks.find(t=>t.id===c.taskId),ps,pmap[c.projectId],db,user)), escalations:ps.viewReports?db.escalations.filter(e=>canReadTask(db.tasks.find(t=>t.id===e.taskId),ps,pmap[e.projectId],db,user)):[], notifications, audit:ps.viewAudit?db.audit.filter(a=>workflowAuditVisible(db,a,user,ps)).map(a=>safeAudit(a,ps,db)):[], leave:db.leave, settings:db.settings});
+      comments:db.comments.filter(c=>canReadTask(db.tasks.find(t=>t.id===c.taskId),ps,pmap[c.projectId],db,user)), escalations:ps.viewReports?db.escalations.filter(e=>canReadTask(db.tasks.find(t=>t.id===e.taskId),ps,pmap[e.projectId],db,user)):[], notifications, audit:ps.viewAudit?db.audit.filter(a=>workflowAuditVisible(db,a,user,ps)).map(a=>safeAudit(a,ps,db,user)):[], leave:db.leave, settings:db.settings});
   }
 
   if(req.method==='GET'&&u.pathname==='/api/feedback'){
@@ -361,7 +350,7 @@ const server = http.createServer(async(req,res)=>{ let release;try{
     if(!isSystemAdmin(user))return send(res,403,{error:'System Administrator access required for role management'}); const pid=u.pathname.split('/').pop();
     if(DEFAULT_PROFILE_IDS.has(pid))return send(res,400,{error:'Default profiles cannot be deleted'});
     if(db.users.some(x=>x.profileId===pid))return send(res,409,{error:'Profile is assigned to users'});
-    const p=db.profiles.find(x=>x.id===pid); if(!p)return send(res,404,{error:'Profile not found'}); for(const w of db.workflowConfig?.workflows||[])for(const item of [...(w.nodes||[]),...(w.objects||[])])if(item.permissions){delete item.permissions[pid];delete item.permissions[p.name]} db.profiles=db.profiles.filter(x=>x.id!==pid);
+    const p=db.profiles.find(x=>x.id===pid); if(!p)return send(res,404,{error:'Profile not found'}); for(const w of db.workflowConfig?.workflows||[])for(const item of [...(w.nodes||[]),...(w.objects||[])])if(item.permissions){delete item.permissions[pid];delete item.permissions[p.name]} for(const w of [...(db.workflowConfig?.workflows||[]),...Object.values(db.projectWorkflows||{})])for(const node of w.nodes||[])for(const field of node.fields||[])if(field.permissions){delete field.permissions[pid];delete field.permissions[p.name]} db.profiles=db.profiles.filter(x=>x.id!==pid);
     audit(db,user,`Deleted role profile ${p.name}`,{entityType:'profile',entityId:pid}); write(db); return send(res,200,{ok:true});
   }
 
@@ -376,12 +365,13 @@ const server = http.createServer(async(req,res)=>{ let release;try{
     const leads=leadError(db,b);if(leads)return send(res,422,{error:leads});p.managerId=b.managerId||(ps.assignTasks&&isResource(user)?user.id:'');p.supervisorId=b.supervisorId||'';if(p.managerId)p.projectManager=db.users.find(u=>u.id===p.managerId)?.name||'';if(!b.workflowId)return send(res,422,{error:'Select an existing workflow before creating a project'});if(!p.managerId&&!p.supervisorId)return send(res,422,{error:'Assign a project manager or supervisor for mandatory parent sign-off'});const template=workflowTemplate(db,p,b.workflowId);if(!template)return send(res,422,{error:'Select a valid workflow'});
     if(['commercial','commercial-tracker'].includes(template.id)&&!b.status)p.status='Not Started';db.projects.unshift(p);attachWorkflow(db,p,template,user);workflowNotify(db,p,user,{}); audit(db,user,`Created ${type==='commercial'?'Commercial project':'Internal EER'} ${p.wbs}`,{entityType:'project',entityId:p.id,projectId:p.id});
     if(type==='internal_eer'&&!['Senior Management','System Administrator'].includes(profileOf(db,user)?.name))notify(db,`New Internal EER ${p.wbs} created by ${user.name}`,['LTSE','Senior Management','System Administrator']);
-    write(db); return send(res,201,{ok:true,project:safeProject(p,ps,db)});
+    write(db); return send(res,201,{ok:true,project:safeProject(p,ps,db,user)});
   }
   if(req.method==='PATCH'&&/^\/api\/projects\/[^/]+$/.test(u.pathname)){
     if(!ps.editProjects)return send(res,403,{error:'Edit Projects permission required'}); const pid=u.pathname.split('/').pop(), p=project(db,pid); if(!p)return send(res,404,{error:'Project not found'});
     if(p.type==='commercial'&&(!ps.viewCommercial||p.stage==='RFQ'&&!ps.viewRFQEngineering))return send(res,403,{error:'Commercial access required'}); const b=await body(req), before=structuredClone(p);
     if(!ps.viewCommercialFields&&Object.keys(b).some(key=>require('./financial-access').financialMappings(db.projectWorkflows[p.id]?.nodes).has(key)))return send(res,403,{error:'Commercial-data permission required for this field'});
+    const fieldRules=require('./field-access').mappedAccess(db,p,user,ps,WF);if(Object.keys(b).some(key=>fieldRules[key]==='hidden'||fieldRules[key]==='view'&&JSON.stringify(b[key])!==JSON.stringify(p[key]??p.pricing?.[key]??'')))return send(res,403,{error:'This field is hidden, read-only or locked by its workflow object'});
     if(Object.hasOwn(b,'owner')){const error=ownerError(db,b.owner,p.owner);if(error)return send(res,422,{error});}
     if(b.registerEdit){const c=db.settings.registerConfig||Register.defaults;if(Object.keys(b).some(k=>k!=='registerEdit'&&(!c.columns.includes(k)||!c.editable.includes(k))))return send(res,403,{error:'This field is read-only in the register'});}
     const permissionError=profilePermissionError(b.permissions);if(permissionError)return send(res,400,{error:permissionError}); if(p.type==='commercial'&&!ps.viewCommercialFields&&['rom','poStatus','negotiationNotes','offerDetails','agreementDetails','pricing','stage'].some(k=>Object.hasOwn(b,k)))return send(res,403,{error:'Commercial fields and handover require management permission'}); const fields=['managerId','supervisorId','client','title','aircraft','registration','releaseType','sector','owner','priority','stage','status','scope','edd','startDate','requiredInputs','deliverables','clientFocal','doaFocal','projectManager','site','sage','nreStatus','remarks','doaScope','customerSupport','programme','internalClient','projectTimeline','requestDate','completionDate','taskClassification','department','workshareStatus'];
@@ -391,7 +381,7 @@ const server = http.createServer(async(req,res)=>{ let release;try{
     const candidate={...p};for(const k of fields)if(Object.hasOwn(b,k))candidate[k]=b[k];const dateError=projectDateError(candidate);if(dateError)return send(res,422,{error:dateError});
     for(const k of fields)if(Object.hasOwn(b,k))p[k]=b[k]; if(p.type==='commercial'&&ps.viewCommercialFields){ p.pricing||={}; for(const k of ['rom','poStatus','negotiationNotes','offerDetails','agreementDetails'])if(Object.hasOwn(b,k))p.pricing[k]=b[k]; }
     if(Object.hasOwn(b,'managerId'))p.projectManager=db.users.find(u=>u.id===p.managerId)?.name||'';
-    const changes=diff(before,p,fields.concat(['pricing'])); if(changes.length)audit(db,user,`Updated project ${p.wbs}: ${changes.map(c=>c.field).join(', ')}`,{entityType:'project',entityId:p.id,projectId:p.id,changes}); write(db); return send(res,200,{ok:true,project:safeProject(p,ps,db)});
+    const changes=diff(before,p,fields.concat(['pricing'])); if(changes.length)audit(db,user,`Updated project ${p.wbs}: ${changes.map(c=>c.field).join(', ')}`,{entityType:'project',entityId:p.id,projectId:p.id,changes}); write(db); return send(res,200,{ok:true,project:safeProject(p,ps,db,user)});
   }
   if(req.method==='DELETE'&&/^\/api\/projects\/[^/]+$/.test(u.pathname)){
     if(!ps.deleteProjects)return send(res,403,{error:'Delete Projects permission required'}); const pid=u.pathname.split('/').pop(), p=project(db,pid); if(!p)return send(res,404,{error:'Project not found'});
@@ -549,11 +539,11 @@ const server = http.createServer(async(req,res)=>{ let release;try{
     if(!ps.exportData)return send(res,403,{error:'Export permission required'});
     const projects=db.projects.filter(p=>p.type!=='commercial'||ps.viewCommercial), ids=new Set(projects.map(p=>p.id));
     const tasks=db.tasks.filter(t=>ids.has(t.projectId)&&canReadTask(t,ps,project(db,t.projectId),db,user)), tids=new Set(tasks.map(t=>t.id));
-    return send(res,200,{projects:projects.map(p=>safeProject(p,ps,db)),tasks:tasks.map(t=>safeTask(t,ps,project(db,t.projectId))),comments:db.comments.filter(c=>tids.has(c.taskId)),escalations:ps.viewReports?db.escalations.filter(e=>tids.has(e.taskId)):[],leave:ps.manageLeave?db.leave:[],audit:ps.viewAudit?db.audit.filter(a=>workflowAuditVisible(db,a,user,ps)).map(a=>safeAudit(a,ps,db)):[],workflows:projects.filter(p=>canReadTask({},ps,p,db,user)).map(p=>({projectId:p.id,workflow:WF.view(db,p,user,ps)})),attachments:(db.objectAttachments||[]).filter(f=>projects.some(p=>p.id===f.projectId&&canReadTask({},ps,p,db,user)&&WF.canRead(db,p,user,ps,f.nodeId)&&(!require('./financial-access').financialFile(f,db.projectWorkflows[p.id]?.nodes.find(n=>n.id===f.nodeId),db.projectWorkflows[p.id]?.nodes)||ps.viewCommercialFields))),users:db.users.map(({id,name,position,capacity,active})=>({id,name,position,capacity,active}))},'application/json',{'Content-Disposition':'attachment; filename="ets-ipm-data.json"'});
+    return send(res,200,{projects:projects.map(p=>safeProject(p,ps,db,user)),tasks:tasks.map(t=>safeTask(t,ps,project(db,t.projectId))),comments:db.comments.filter(c=>tids.has(c.taskId)),escalations:ps.viewReports?db.escalations.filter(e=>tids.has(e.taskId)):[],leave:ps.manageLeave?db.leave:[],audit:ps.viewAudit?db.audit.filter(a=>workflowAuditVisible(db,a,user,ps)).map(a=>safeAudit(a,ps,db,user)):[],workflows:projects.filter(p=>canReadTask({},ps,p,db,user)).map(p=>({projectId:p.id,workflow:WF.view(db,p,user,ps)})),attachments:(db.objectAttachments||[]).filter(f=>projects.some(p=>p.id===f.projectId&&canReadTask({},ps,p,db,user)&&WF.canRead(db,p,user,ps,f.nodeId)&&(!require('./financial-access').financialFile(f,db.projectWorkflows[p.id]?.nodes.find(n=>n.id===f.nodeId),db.projectWorkflows[p.id]?.nodes)||ps.viewCommercialFields))),users:db.users.map(({id,name,position,capacity,active})=>({id,name,position,capacity,active}))},'application/json',{'Content-Disposition':'attachment; filename="ets-ipm-data.json"'});
   }
   if(req.method==='GET'&&u.pathname==='/api/export.csv'){
     if(!ps.exportData)return send(res,403,{error:'Export permission required'}); const pmap=Object.fromEntries(db.projects.map(p=>[p.id,p])),head=['WBS','Project','Client','Type','Stage','Task','Assignee','Status','MH Estimate','MH Actual','Flag'],lines=[head.map(csv).join(',')];
-    for(const t of db.tasks){const p=pmap[t.projectId];if(p?.type==='commercial'&&!ps.viewCommercial)continue;if(!canReadTask(t,ps,p,db,user))continue;const st=safeTask(t,ps,p),sp=safeProject(p,ps,db);lines.push([t.wbs,sp?.title,sp?.client,sp?.type,sp?.stage,t.title,t.assignee,t.status,st.mhEstimate??'',st.mhActual??'',t.flag].map(csv).join(','));}
+    for(const t of db.tasks){const p=pmap[t.projectId];if(p?.type==='commercial'&&!ps.viewCommercial)continue;if(!canReadTask(t,ps,p,db,user))continue;const st=safeTask(t,ps,p),sp=safeProject(p,ps,db,user);lines.push([t.wbs,sp?.title,sp?.client,sp?.type,sp?.stage,t.title,t.assignee,t.status,st.mhEstimate??'',st.mhActual??'',t.flag].map(csv).join(','));}
     return send(res,200,lines.join('\n'),'text/csv',{'Content-Disposition':'attachment; filename="ETS_Work_Tracker_export.csv"'});
   }
   if(req.method==='GET'&&u.pathname.startsWith('/api/reports/')){

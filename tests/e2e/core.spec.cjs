@@ -32,7 +32,7 @@ test('role management loads server permissions and settings screen opens',async(
  await page.getByRole('button',{name:'Manage Permissions',exact:true}).first().click();
  await expect(page.getByRole('dialog')).toBeVisible();await expect(page.getByLabel('Manage Roles',{exact:false})).toBeDisabled();
  await page.getByRole('button',{name:'Cancel',exact:true}).click();
- await page.getByRole('button',{name:'Project Configuration'}).click();
+ await page.getByRole('button',{name:'Project Settings'}).click();
  await expect(page.getByRole('heading',{name:'System settings'})).toHaveCount(0);
  await expect(page.getByRole('heading',{name:'Workflow configuration'})).toBeVisible();
 });

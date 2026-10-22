@@ -1,4 +1,6 @@
 export type ObjectField = {
+  permissions?:Record<string,string>;
+  canEdit?:boolean;
   section?: string;
   id: string;
   label: string;
@@ -113,7 +115,7 @@ export default function WorkflowFieldsEditor({
           <h3>{name} — object form</h3>
           <p className="muted">
             Define the fields users fill in on this page after creating a project. Template fields
-            contain no project data. Budget and pricing fields are restricted to profiles with commercial-data access; that protection also applies to objects beneath a budget object.
+            contain no project data. Manage role access and financial protection in Project Settings → Field permissions. Budget and pricing fields are restricted to profiles with commercial-data access; that protection also applies to objects beneath a budget object.
           </p>
         </div>
         <button
@@ -225,26 +227,6 @@ export default function WorkflowFieldsEditor({
                     onChange={(e) => update(f.id, { required: e.target.checked })}
                   />
                   Required
-                </label>
-                <label>
-                  Visibility
-                  <select
-                    aria-label={'Field visibility ' + (index + 1)}
-                    value={financialLabel(name)||financialLabel(f.label)||financialLabel(f.section||'')?'commercial':f.dataGroup || 'general'}
-                    disabled={financialLabel(name)||financialLabel(f.label)||financialLabel(f.section||'')||[
-                      'rom',
-                      'poStatus',
-                      'negotiationNotes',
-                      'offerDetails',
-                      'agreementDetails',
-                    ].includes(f.projectField || '')}
-                    onChange={(e) =>
-                      update(f.id, { dataGroup: e.target.value as ObjectField['dataGroup'] })
-                    }
-                  >
-                    <option value="general">Object permissions</option>
-                    <option value="commercial">Restricted commercial / pricing</option>
-                  </select>
                 </label>
               </div>
               {f.type === 'select' && f.projectField!=='owner' && (

@@ -358,15 +358,15 @@ function view(db, p, user, ps) {
         parent: n.parent,
         completion: n.completion,
         parallelWithPrevious: n.parallelWithPrevious,
-        fields: F.visibleFields({...n,financialRestricted:financialNode(instance.nodes,n)}, p, ps),
-        requiredFields: F.visibleFields({...n,financialRestricted:financialNode(instance.nodes,n)}, p, ps)
+        fields: F.visibleFields({...n,financialRestricted:financialNode(instance.nodes,n)}, p, ps,user.profileId).map(({permissions,...field})=>({...field,canEdit:ACCESS.indexOf(level)>=2&&state.status==='In progress'&&require('./field-access').fieldAccess({...field,permissions},user.profileId)!=='view'})),
+        requiredFields: F.visibleFields({...n,financialRestricted:financialNode(instance.nodes,n)}, p, ps,user.profileId)
           .filter((f) => f.required)
           .map((f) => f.id),
         requiresSignoff: requiresSignoff(instance, n),
         ...structuredClone(state),
         values: Object.fromEntries(
           Object.entries(state.values || {}).filter(([id]) =>
-            F.visibleFields({...n,financialRestricted:financialNode(instance.nodes,n)}, p, ps).some((f) => f.id === id),
+            F.visibleFields({...n,financialRestricted:financialNode(instance.nodes,n)}, p, ps,user.profileId).some((f) => f.id === id),
           ),
         ),
         blockers: blocked,
@@ -452,7 +452,7 @@ function transition(db, p, user, ps, nodeId, b) {
     const error = editError(db, p, user, ps, nodeId);
     if (error) return { status: 403, error };
     if (b.values !== undefined) {
-      const checked = F.validateValues({...node,financialRestricted:financialNode(instance.nodes,node)}, p, ps, b.values, db.users);
+      const checked = F.validateValues({...node,financialRestricted:financialNode(instance.nodes,node)}, p, ps, b.values, db.users,user.profileId);
       if (checked.error)
         return { status: checked.status || 422, error: checked.error };
       Object.assign(p, checked.updates);
