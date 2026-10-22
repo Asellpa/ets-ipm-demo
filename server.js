@@ -357,6 +357,7 @@ const server = http.createServer(async(req,res)=>{ let release;try{
 
   if(req.method==='POST'&&u.pathname==='/api/projects'){
     const b=await body(req), type=b.type==='commercial'?'commercial':'internal_eer';
+    if(b.status==='Completed'||b.stage==='Completed')return send(res,422,{error:'Create the project first, then complete its workflow and use Project Action to sign off'});
     if(type==='commercial'&&!ps.createCommercial)return send(res,403,{error:'Create Commercial permission required'});
     if(type==='internal_eer'&&!ps.createEER)return send(res,403,{error:'Create EER permission required'});
     const ownerValidation=ownerError(db,b.owner);if(ownerValidation)return send(res,422,{error:ownerValidation});

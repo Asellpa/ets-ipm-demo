@@ -6,6 +6,7 @@ test('final project sign-off requires named approver, completed work, revision a
  const call=async(cookie,url,method='GET',body)=>{const r=await fetch(`http://127.0.0.1:${port}/api${url}`,{method,headers:{Cookie:cookie,'Content-Type':'application/json'},body:body?JSON.stringify(body):undefined});return {status:r.status,data:await r.json(),cookie:r.headers.get('set-cookie')?.split(';')[0]}};
  const admin=(await call('','/login','POST',{user:'Stephan',id:'123',password:'Testing'})).cookie,boot=(await call(admin,'/bootstrap')).data;
  const {config}=(await call(admin,'/workflow-config')).data;config.workflows.push({id:'closure-test',name:'Closure',stages:['Overview'],objects:[],nodes:[{id:'overview',name:'Overview',type:'stage',parent:'',completion:'manual',permissions:{},fields:[]}]});assert.equal((await call(admin,'/workflow-config','PUT',{config})).status,200);
+ assert.equal((await call(admin,'/projects','POST',{type:'internal_eer',workflowId:'closure-test',title:'Bypass',status:'Completed'})).status,422);
  const p=(await call(admin,'/projects','POST',{type:'internal_eer',workflowId:'closure-test',title:'Sign-off test'})).data.project;
  assert.equal((await call(admin,'/projects/'+p.id+'/signoff','POST',{comment:'Too soon'})).status,409);
  let flow=(await call(admin,'/projects/'+p.id+'/workflow')).data.workflow;
