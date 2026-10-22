@@ -95,6 +95,7 @@ function validateSchema(node) {
       !PRICING_FIELDS.has(f.projectField)
     )
       return "Invalid project field mapping";
+    if(PROJECT_FIELDS.has(f.projectField)&&financialField(f,node))return "Restricted financial fields cannot map to public project fields";
     if (PRICING_FIELDS.has(f.projectField) && f.dataGroup !== "commercial")
       return "Pricing fields must use the restricted commercial data group";
     if (
@@ -168,6 +169,7 @@ function validateValues(node, p, ps, values, users) {
         return { error: f.label + ": invalid checkbox value" };
     }
     if (f.projectField) {
+      if(PROJECT_FIELDS.has(f.projectField)&&financialField(f,node))return {error:'Restricted financial fields cannot update public project fields'};
       if (f.projectField === "title" && !value.trim()) continue;
       if (f.projectField === "title" && value.length > 200)
         return { error: "Project name must be at most 200 characters" };

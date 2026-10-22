@@ -129,7 +129,7 @@ function validate(w) {
   if (nodes.length > 200 || !nodes.length)
     return "Workflow must contain 1–200 objects";
   for (const n of nodes) {
-    const fieldError = F.validateSchema(n);
+    const fieldError = F.validateSchema({...n,financialRestricted:financialNode(nodes,n)});
     if (fieldError) return fieldError;
     if (
       n.parallelWithPrevious !== undefined &&
