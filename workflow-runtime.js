@@ -441,7 +441,7 @@ function transition(db, p, user, ps, nodeId, b) {
     const error = editError(db, p, user, ps, nodeId);
     if (error) return { status: 403, error };
     if (b.values !== undefined) {
-      const checked = F.validateValues(node, p, ps, b.values);
+      const checked = F.validateValues(node, p, ps, b.values, db.users);
       if (checked.error)
         return { status: checked.status || 422, error: checked.error };
       Object.assign(p, checked.updates);

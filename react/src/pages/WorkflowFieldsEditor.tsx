@@ -15,6 +15,7 @@ const presets: Omit<ObjectField, 'id'>[] = [
   { label: 'Scope', type: 'textarea', required: true, projectField: 'scope' },
   { label: 'Client / department', type: 'text', required: false, projectField: 'client' },
   { label: 'Expected delivery date', type: 'date', required: false, projectField: 'edd' },
+  { label: 'Owner', type:'text',required:false,projectField:'owner' },
   { label: 'Aircraft', type: 'text', required: false, projectField: 'aircraft' },
   { label: 'Registration', type: 'text', required: false, projectField: 'registration' },
   {
@@ -187,6 +188,7 @@ export default function WorkflowFieldsEditor({
                   <select
                     aria-label={'Field type ' + (index + 1)}
                     value={f.type}
+                    disabled={f.projectField==='owner'}
                     onChange={(e) => {
                       const type = e.target.value as ObjectField['type'];
                       update(f.id, {
@@ -197,7 +199,7 @@ export default function WorkflowFieldsEditor({
                       });
                     }}
                   >
-                    {['text', 'textarea', 'date', 'number', 'select', 'checkbox'].map((type) => (
+                    {f.projectField==='owner'?<option value={f.type}>User dropdown (database)</option>:['text', 'textarea', 'date', 'number', 'select', 'checkbox'].map((type) => (
                       <option key={type} value={type}>
                         {
                           {
@@ -243,7 +245,7 @@ export default function WorkflowFieldsEditor({
                   </select>
                 </label>
               </div>
-              {f.type === 'select' && (
+              {f.type === 'select' && f.projectField!=='owner' && (
                 <label>
                   Choices (one per line)
                   <textarea
@@ -324,7 +326,7 @@ export default function WorkflowFieldsEditor({
             <label key={f.id}>
               {f.label}
               {f.required ? ' *' : ''}
-              {f.type === 'textarea' ? (
+              {f.projectField==='owner'?<select disabled><option>Select an existing active user…</option></select>:f.type === 'textarea' ? (
                 <textarea disabled placeholder="Fill in after project creation" />
               ) : f.type === 'select' ? (
                 <select disabled>

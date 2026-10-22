@@ -121,7 +121,7 @@ function validDate(value) {
     new Date(value).toISOString().slice(0, 10) === value
   );
 }
-function validateValues(node, p, ps, values) {
+function validateValues(node, p, ps, values, users) {
   if (!values || typeof values !== "object" || Array.isArray(values))
     return { error: "Invalid object field values" };
   const updates = {},
@@ -136,6 +136,8 @@ function validateValues(node, p, ps, values) {
       };
     if (typeof value !== "string" || value.length > 5000)
       return { error: "Field values must be text up to 5000 characters" };
+    if (f.projectField === 'owner' && value && value!==p.owner && users && !users.some(u=>u.active && u.name===value))
+      return {error: 'Project owner must be an active existing user'};
     if (value) {
       if (f.type === "date" && !validDate(value))
         return {
@@ -152,7 +154,7 @@ function validateValues(node, p, ps, values) {
             ": enter a valid number" +
             (f.min !== undefined ? " of at least " + f.min : ""),
         };
-      if (f.type === "select" && !f.options.includes(value))
+      if (f.projectField !== "owner" && f.type === "select" && !f.options.includes(value))
         return { error: f.label + ": choose a configured option" };
       if (f.type === "checkbox" && !["true", "false"].includes(value))
         return { error: f.label + ": invalid checkbox value" };

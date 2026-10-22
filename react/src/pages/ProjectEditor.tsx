@@ -31,6 +31,7 @@ const pricingFields = [
   { key: 'agreementDetails', label: 'Agreement details' },
 ] as const;
 export default function ProjectEditor({
+  users,
   project,
   initialType,
   canCommercial,
@@ -40,6 +41,7 @@ export default function ProjectEditor({
   onCancel,
   onConfigure,
 }: {
+  users: {id:string;name:string}[];
   project?: Project;
   initialType?: string;
   canCommercial: boolean;
@@ -262,7 +264,7 @@ export default function ProjectEditor({
           {fields.map((field) => (
             <label key={field.key}>
               {field.label}
-              {field.kind === 'textarea' ? (
+              {field.key === 'owner' ? (<select value={values.owner||''} onChange={e=>set('owner',e.target.value)}><option value="">Unassigned</option>{values.owner&&!users.some(u=>u.name===values.owner)&&<option disabled value={values.owner}>{values.owner} (unavailable)</option>}{users.map(u=><option key={u.id} value={u.name}>{u.name}</option>)}</select>) : field.kind === 'textarea' ? (
                 <textarea
                   value={values[field.key] || ''}
                   onChange={(e) => set(field.key, e.target.value)}

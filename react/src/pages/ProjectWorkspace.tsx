@@ -264,7 +264,7 @@ function ObjectDetails({
             <Fragment key={field.id}>{field.section!==node.fields[index-1]?.section&&field.section&&<h3 className="object-field-section">{field.section}</h3>}<label>
               {field.label}
               {field.required ? ' *' : ''}
-              {field.type === 'textarea' ? (
+              {field.projectField === 'owner' ? (<select aria-label={field.label} disabled={!node.canEdit||busy} value={values[field.id]||''} onChange={e=>setValues(current=>({...current,[field.id]:e.target.value}))}><option value="">Select owner…</option>{values[field.id]&&!data.users.some(u=>u.name===values[field.id])&&<option disabled value={values[field.id]}>{values[field.id]} (unavailable)</option>}{data.users.map(u=><option key={u.id} value={u.name}>{u.name}</option>)}</select>) : field.type === 'textarea' ? (
                 <textarea
                   aria-label={field.label}
                   disabled={!node.canEdit || busy}
