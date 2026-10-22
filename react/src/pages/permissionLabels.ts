@@ -1,11 +1,11 @@
 export const permissionLabels:Record<string,{label:string;help:string}> = {
   "viewCommercial": {
-    "label": "View Commercial Projects",
-    "help": "See Commercial project cards and RFQs."
+    "label": "View Projects",
+    "help": "See Project cards and RFQs."
   },
   "createCommercial": {
-    "label": "Create Commercial Projects",
-    "help": "Create new Commercial projects."
+    "label": "Create Projects",
+    "help": "Create new Projects."
   },
   "viewCommercialFields": {
     "label": "View Commercial / Pricing Fields",
@@ -13,11 +13,11 @@ export const permissionLabels:Record<string,{label:string;help:string}> = {
   },
   "viewRFQEngineering": {
     "label": "View RFQ Engineering / MH Fields",
-    "help": "Access task breakdown and MH/engineering fields on Commercial RFQs before handover. This is deliberately separate from pricing access."
+    "help": "Access task breakdown and MH/engineering fields on Projects before handover before handover. This is deliberately separate from pricing access."
   },
   "createEER": {
-    "label": "Create Internal EER",
-    "help": "Create Internal EER project cards."
+    "label": "Create Internal",
+    "help": "Create Internal project cards."
   },
   "editProjects": {
     "label": "Edit Projects",

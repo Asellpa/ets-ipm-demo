@@ -4,6 +4,7 @@ const path = require('path');
 const crypto = require('crypto');
 const { URL } = require('url');
 const WF=require('./workflow-runtime');
+const Register=require('./register-fields');
 
 const PORT = process.env.PORT || 5174;
 const ROOT = __dirname;
@@ -90,6 +91,7 @@ function verifyPassword(password, user){
 function normalize(db){
   db.users ||= []; db.projects ||= []; db.tasks ||= []; db.notifications ||= []; db.audit ||= [];
   db.projectWorkflows ||= {};
+  db.projectLinks ||= [];
   db.workflowConfig=WF.upgradeConfig(db.workflowConfig);
   db.feedback ||= []; db.comments ||= []; db.escalations ||= []; db.leave ||= [];
   db.settings ||= { standardHoursPerDay:8, commercialFields:['pricing','rom','poStatus','negotiationNotes','offerDetails','agreementDetails'], departments:['Certification','M&I','P&S','Engineering','DOA','Internal'] };
@@ -202,6 +204,7 @@ const server = http.createServer(async(req,res)=>{ let release;try{
     if(req.method==='PUT'){
       if(!ps.manageSettings)return send(res,403,{error:'Manage Settings permission required'});
       const payload=await body(req),cfg=payload.config;
+      if(cfg)cfg.templateCatalog={...db.workflowConfig.templateCatalog,...cfg.templateCatalog};
       if(!cfg||!Array.isArray(cfg.workflows)||!Array.isArray(cfg.projectTypes)||!cfg.register||!cfg.resource)return send(res,400,{error:'Invalid workflow configuration'});
       const ids=new Set(cfg.workflows.map(w=>w.id));
       if(ids.size!==cfg.workflows.length)return send(res,400,{error:'Duplicate workflow IDs'});
@@ -237,6 +240,23 @@ const server = http.createServer(async(req,res)=>{ let release;try{
     if(req.method==='PATCH'&&parts.length===7){const instance=db.projectWorkflows[p.id];if(!instance)return send(res,404,{error:'Project has no workflow'});const b=await body(req),before=structuredClone(instance.states),result=WF.transition(db,p,user,ps,parts[6],b);if(result.error)return send(res,result.status,{error:result.error});workflowNotify(db,p,user,before);audit(db,user,'Workflow object '+b.action,{entityType:'workflow',entityId:p.id,projectId:p.id,workflowNodeId:parts[6],action:b.action,comment:String(b.comment||'').slice(0,3000)});write(db);return send(res,200,{workflow:WF.view(db,p,user,ps)});}
   }
 
+  if(u.pathname==='/api/register-config'){
+    if(req.method==='GET')return send(res,200,{fields:Register.fields.filter(f=>!f.restricted||ps.viewCommercialFields),config:db.settings.registerConfig||Register.defaults});
+    if(req.method==='PUT'){if(!ps.manageSettings)return send(res,403,{error:'Manage Settings permission required'});const c=await body(req),error=Register.error(c);if(error)return send(res,422,{error});db.settings.registerConfig={columns:c.columns,editable:c.editable};audit(db,user,'Updated project register columns',{entityType:'settings'});write(db);return send(res,200,{ok:true});}
+  }
+  if(u.pathname==='/api/project-links'&&req.method==='POST'){
+    if(!ps.editProjects)return send(res,403,{error:'Edit Projects permission required'});
+    const b=await body(req),a=project(db,b.projectId),z=project(db,b.linkedProjectId);
+    if(!a||!z||!canReadTask({},ps,a,db,user)||!canReadTask({},ps,z,db,user))return send(res,404,{error:'Both projects must be accessible'});
+    if(a.type===z.type)return send(res,422,{error:'Link an Internal project with a Project'});
+    if(!db.projectLinks.some(l=>[l.projectId,l.linkedProjectId].includes(a.id)&&[l.projectId,l.linkedProjectId].includes(z.id)))db.projectLinks.push({id:id('link'),projectId:a.id,linkedProjectId:z.id,createdBy:user.id,createdAt:now()});
+    audit(db,user,'Linked project records',{entityType:'project',entityId:a.id,projectId:a.id});write(db);return send(res,201,{ok:true});
+  }
+  if(req.method==='DELETE'&&/^\/api\/project-links\/[^/]+$/.test(u.pathname)){
+    if(!ps.editProjects)return send(res,403,{error:'Edit Projects permission required'});const link=db.projectLinks.find(l=>l.id===u.pathname.split('/').pop());if(!link)return send(res,404,{error:'Link not found'});
+    if(![link.projectId,link.linkedProjectId].every(pid=>canReadTask({},ps,project(db,pid),db,user)))return send(res,404,{error:'Link not found'});
+    db.projectLinks=db.projectLinks.filter(l=>l.id!==link.id);audit(db,user,'Removed project link',{entityType:'project',entityId:link.projectId,projectId:link.projectId});write(db);return send(res,200,{ok:true});
+  }
   if(req.method==='GET'&&u.pathname==='/api/bootstrap'){
     const pmap=Object.fromEntries(db.projects.map(p=>[p.id,p]));
     const visibleProjects=db.projects.filter(p=>p.type!=='commercial'||ps.viewCommercial);
@@ -244,6 +264,7 @@ const server = http.createServer(async(req,res)=>{ let release;try{
     const notifications=db.notifications.filter(n=>n.recipients?.includes('All')||n.recipients?.includes(user.name)||n.recipients?.includes(profileOf(db,user)?.name)).filter(n=>!n.workflowNodeId||project(db,n.projectId)&&WF.canRead(db,project(db,n.projectId),user,ps,n.workflowNodeId));
     return send(res,200,{user:user.name,userId:user.userId,profile:profileOf(db,user)?.name,permissions:ps,
       users:db.users.filter(x=>x.active).map(x=>({id:x.id,name:x.name,position:x.position,capacity:x.capacity,profileId:x.profileId})),
+      projectLinks:db.projectLinks.filter(l=>[l.projectId,l.linkedProjectId].every(pid=>visibleIds.has(pid)&&canReadTask({},ps,pmap[pid],db,user))),
       projects:visibleProjects.map(p=>safeProject(p,ps)),workflowSummaries:Object.fromEntries(visibleProjects.filter(p=>canReadTask({},ps,p,db,user)&&db.projectWorkflows[p.id]).map(p=>{const w=WF.view(db,p,user,ps);return [p.id,{name:w.name,completed:w.completed,total:w.total,isComplete:w.isComplete,active:w.nodes.filter(n=>!n.parent&&n.status==='In progress').map(n=>n.name)}]})),
       tasks:db.tasks.filter(t=>visibleIds.has(t.projectId)&&canReadTask(t,ps,pmap[t.projectId],db,user)).map(t=>({...safeTask(t,ps,pmap[t.projectId]),level:taskLevel(t,pmap[t.projectId]),workflowPlanningAllowed:WF.canPlanTask(db,pmap[t.projectId],user,ps,t),workflowLocked:!!t.workflowNodeId&&!WF.canUpdateTask(db,pmap[t.projectId],user,ps,t)})),
       comments:db.comments.filter(c=>canReadTask(db.tasks.find(t=>t.id===c.taskId),ps,pmap[c.projectId],db,user)), escalations:ps.viewReports?db.escalations.filter(e=>canReadTask(db.tasks.find(t=>t.id===e.taskId),ps,pmap[e.projectId],db,user)):[], notifications, audit:ps.viewAudit?db.audit.filter(a=>workflowAuditVisible(db,a,user,ps)).map(a=>safeAudit(a,ps)):[], leave:db.leave, settings:db.settings});
@@ -362,15 +383,17 @@ const server = http.createServer(async(req,res)=>{ let release;try{
     const p={id:id('p'),wbs:b.wbs||(type==='commercial'?String(n):`EER-${String(n).padStart(3,'0')}`),type,client:b.client||(type==='internal_eer'?'Internal':''),title:b.title||'Untitled project',aircraft:b.aircraft||'',registration:b.registration||'',releaseType:b.releaseType||'',sector:b.sector||'',owner:b.owner||user.name,priority:b.priority||'Normal',stage:type==='commercial'?(b.stage||'RFQ'):(b.stage||'In Progress'),status:b.status||b.stage||(type==='commercial'?'RFQ':'In Progress'),scope:b.scope||'',edd:b.edd||'',startDate:b.startDate||'',requiredInputs:b.requiredInputs||'',deliverables:b.deliverables||'',clientFocal:b.clientFocal||'',doaFocal:b.doaFocal||'',projectManager:b.projectManager||'',site:b.site||'',sage:b.sage||'',nreStatus:b.nreStatus||'',remarks:b.remarks||'',pricing:type==='commercial'?{rom:b.rom||'',poStatus:b.poStatus||'',negotiationNotes:b.negotiationNotes||'',offerDetails:b.offerDetails||'',agreementDetails:b.agreementDetails||''}:undefined};
     const dateError=projectDateError(p);if(dateError)return send(res,422,{error:dateError});
     const leads=leadError(db,b);if(leads)return send(res,422,{error:leads});p.managerId=b.managerId||(ps.assignTasks?user.id:'');p.supervisorId=b.supervisorId||'';if(p.managerId)p.projectManager=db.users.find(u=>u.id===p.managerId)?.name||'';if(!b.workflowId)return send(res,422,{error:'Select an existing workflow before creating a project'});if(!p.managerId&&!p.supervisorId)return send(res,422,{error:'Assign a project manager or supervisor for mandatory parent sign-off'});const template=workflowTemplate(db,p,b.workflowId);if(!template)return send(res,422,{error:'Select a valid workflow'});
-    if(template.id==='commercial-tracker'&&!b.status)p.status='Not Started';db.projects.unshift(p);attachWorkflow(db,p,template,user);workflowNotify(db,p,user,{}); audit(db,user,`Created ${type==='commercial'?'Commercial project':'Internal EER'} ${p.wbs}`,{entityType:'project',entityId:p.id,projectId:p.id});
+    if(['commercial','commercial-tracker'].includes(template.id)&&!b.status)p.status='Not Started';db.projects.unshift(p);attachWorkflow(db,p,template,user);workflowNotify(db,p,user,{}); audit(db,user,`Created ${type==='commercial'?'Commercial project':'Internal EER'} ${p.wbs}`,{entityType:'project',entityId:p.id,projectId:p.id});
     if(type==='internal_eer'&&!['Senior Management','System Administrator'].includes(profileOf(db,user)?.name))notify(db,`New Internal EER ${p.wbs} created by ${user.name}`,['LTSE','Senior Management','System Administrator']);
     write(db); return send(res,201,{ok:true,project:safeProject(p,ps)});
   }
   if(req.method==='PATCH'&&/^\/api\/projects\/[^/]+$/.test(u.pathname)){
     if(!ps.editProjects)return send(res,403,{error:'Edit Projects permission required'}); const pid=u.pathname.split('/').pop(), p=project(db,pid); if(!p)return send(res,404,{error:'Project not found'});
     if(p.type==='commercial'&&(!ps.viewCommercial||p.stage==='RFQ'&&!ps.viewRFQEngineering))return send(res,403,{error:'Commercial access required'}); const b=await body(req), before=structuredClone(p);
-    const permissionError=profilePermissionError(b.permissions);if(permissionError)return send(res,400,{error:permissionError}); if(p.type==='commercial'&&!ps.viewCommercialFields&&['rom','poStatus','negotiationNotes','offerDetails','agreementDetails','pricing','stage','status'].some(k=>Object.hasOwn(b,k)))return send(res,403,{error:'Commercial fields and handover require management permission'}); const fields=['managerId','supervisorId','client','title','aircraft','registration','releaseType','sector','owner','priority','stage','status','scope','edd','startDate','requiredInputs','deliverables','clientFocal','doaFocal','projectManager','site','sage','nreStatus','remarks'];
+    if(b.registerEdit){const c=db.settings.registerConfig||Register.defaults;if(Object.keys(b).some(k=>k!=='registerEdit'&&(!c.columns.includes(k)||!c.editable.includes(k))))return send(res,403,{error:'This field is read-only in the register'});}
+    const permissionError=profilePermissionError(b.permissions);if(permissionError)return send(res,400,{error:permissionError}); if(p.type==='commercial'&&!ps.viewCommercialFields&&['rom','poStatus','negotiationNotes','offerDetails','agreementDetails','pricing','stage','status'].some(k=>Object.hasOwn(b,k)))return send(res,403,{error:'Commercial fields and handover require management permission'}); const fields=['managerId','supervisorId','client','title','aircraft','registration','releaseType','sector','owner','priority','stage','status','scope','edd','startDate','requiredInputs','deliverables','clientFocal','doaFocal','projectManager','site','sage','nreStatus','remarks','doaScope','customerSupport','programme','internalClient','projectTimeline','requestDate','completionDate','taskClassification','department','workshareStatus'];
     if(['managerId','supervisorId'].some(k=>Object.hasOwn(b,k))){if(!ps.assignTasks)return send(res,403,{error:'Task assignment permission required to appoint project leads'});const leads=leadError(db,b);if(leads)return send(res,422,{error:leads});}if(b.workflowId&&b.workflowId!==p.workflowId)return send(res,409,{error:'Existing workflow versions cannot be changed through project editing'});
+    if((b.status==='Completed'||b.stage==='Completed')&&db.tasks.some(t=>t.projectId===p.id&&Number(t.level||3)>=3&&!['Completed','Not Required','Lost/Cancelled','No-Go (Client)','No-Go (DOA)','Lost (DOA)'].includes(t.status)))return send(res,409,{error:'Complete or cancel all applicable tasks before completing the project'});
     if(db.projectWorkflows[p.id]&&(b.status==='Completed'||b.stage==='Completed')&&db.projectWorkflows[p.id].nodes.some(n=>db.projectWorkflows[p.id].states[n.id].status!=='Completed'))return send(res,409,{error:'Complete and sign off all workflow objects before marking the project Completed'});
     const candidate={...p};for(const k of fields)if(Object.hasOwn(b,k))candidate[k]=b[k];const dateError=projectDateError(candidate);if(dateError)return send(res,422,{error:dateError});
     for(const k of fields)if(Object.hasOwn(b,k))p[k]=b[k]; if(p.type==='commercial'&&ps.viewCommercialFields){ p.pricing||={}; for(const k of ['rom','poStatus','negotiationNotes','offerDetails','agreementDetails'])if(Object.hasOwn(b,k))p.pricing[k]=b[k]; }
@@ -380,7 +403,7 @@ const server = http.createServer(async(req,res)=>{ let release;try{
   if(req.method==='DELETE'&&/^\/api\/projects\/[^/]+$/.test(u.pathname)){
     if(!ps.deleteProjects)return send(res,403,{error:'Delete Projects permission required'}); const pid=u.pathname.split('/').pop(), p=project(db,pid); if(!p)return send(res,404,{error:'Project not found'});
     const tids=db.tasks.filter(t=>t.projectId===pid).map(t=>t.id); db.projects=db.projects.filter(x=>x.id!==pid); db.tasks=db.tasks.filter(t=>t.projectId!==pid); db.comments=db.comments.filter(c=>!tids.includes(c.taskId)); db.escalations=db.escalations.filter(e=>!tids.includes(e.taskId));
-    delete db.projectWorkflows[pid];
+    delete db.projectWorkflows[pid];db.projectLinks=db.projectLinks.filter(l=>l.projectId!==pid&&l.linkedProjectId!==pid);
     audit(db,user,`Deleted project ${p.wbs} and ${tids.length} tasks`,{entityType:'project',entityId:pid,projectId:pid}); write(db); return send(res,200,{ok:true});
   }
 
@@ -393,8 +416,9 @@ const server = http.createServer(async(req,res)=>{ let release;try{
   }
   if(req.method==='POST'&&u.pathname==='/api/tasks'){
     if(!ps.createTasks)return send(res,403,{error:'Create Tasks permission required'}); const b=await body(req), p=project(db,b.projectId); if(!p)return send(res,404,{error:'Project not found'});
+    if(!b.workflowNodeId&&db.projectWorkflows[p.id]?.nodes.some(n=>n.id==='execution'))b.workflowNodeId='execution';
     if(!canReadTask({},ps,p,db,user))return send(res,403,{error:'Project engineering access required'}); const parent=b.parentWbs||p.wbs; if(parent!==p.wbs&&!db.tasks.some(t=>t.projectId===p.id&&t.wbs===parent&&Number(t.level)===2))return send(res,400,{error:'Invalid parent work package'}); const wbs=nextWbs(db,p,parent), t={id:id('t'),projectId:p.id,wbs,parentWbs:parent,level:3,title:b.title||'New task',department:b.department||'Engineering',assignee:ps.assignTasks?(b.assignee||'Unassigned'):'Unassigned',priority:b.priority||'Normal',status:b.assignee&&b.assignee!=='Unassigned'&&(!b.status||b.status==='To Do')?'Assigned':(b.status||'To Do'),mhEstimate:Number(b.mhEstimate||0),mhActual:Number(b.mhActual||0),startDate:b.startDate||new Date().toISOString().slice(0,10),dueDate:b.dueDate||'',dependency:b.dependency||'',action:b.action||'',remarks:b.remarks||'',flag:b.flag||'',flagReason:b.flagReason||''};
-    if(b.workflowNodeId){if(Number(t.level)===2)return send(res,422,{error:'Link individual tasks, not work package totals, to workflow objects'});const error=WF.editError(db,p,user,ps,b.workflowNodeId);t.workflowNodeId=b.workflowNodeId;if(error&&!(WF.canPlanTask(db,p,user,ps,t)&&['To Do','Assigned'].includes(t.status)&&!t.mhActual))return send(res,403,{error});}
+    if(b.workflowNodeId){if(Number(t.level)===2)return send(res,422,{error:'Link individual tasks, not work package totals, to workflow objects'});const error=WF.editError(db,p,user,ps,b.workflowNodeId);t.workflowNodeId=b.workflowNodeId;if(error&&!(WF.canPlanTask(db,p,user,ps,t)&&['Not Started','To Do','Assigned'].includes(t.status)&&!t.mhActual))return send(res,403,{error});}
     const validation=taskError(t);if(validation)return send(res,422,{error:validation}); if(t.assignee!=='Unassigned'&&!db.users.some(u=>u.active&&u.name===t.assignee))return send(res,422,{error:'Assignee must be an active team member'});
     if(t.mhActual>t.mhEstimate&&(!['Escalation','Bottleneck'].includes(t.flag)||!String(t.flagReason||'').trim()))return send(res,422,{error:'Actual MH exceeds estimate. Select Escalation or Bottleneck and enter a reason.'});
     if(t.flag)db.escalations.unshift({id:id('e'),taskId:t.id,projectId:t.projectId,type:t.flag,reason:t.flagReason,user:user.name,ts:now()}); db.tasks.push(t);if(t.workflowNodeId)db.projectWorkflows[p.id].revision++; audit(db,user,`Created task ${wbs} — ${t.title}`,{entityType:'task',entityId:t.id,workflowNodeId:t.workflowNodeId,projectId:p.id}); if(t.assignee!=='Unassigned')notify(db,`Task ${wbs} assigned to ${t.assignee}`,[t.assignee]); write(db); return send(res,201,{ok:true,task:safeTask(t,ps,p)});
@@ -431,7 +455,7 @@ const server = http.createServer(async(req,res)=>{ let release;try{
     if(!t)return send(res,404,{error:'Task not found'});
     const p=project(db,t.projectId);
     if(!ps.updateActualMH||!canReadTask(t,ps,p,db,user)||t.assignee!==user.name||Number(t.level||3)<3)return send(res,403,{error:'Only the assigned team member can log time on an individual task'});
-    if(['Completed','Lost/Cancelled'].includes(t.status)||!WF.canUpdateTask(db,p,user,ps,t))return send(res,403,{error:'Reopen completed work or wait for workflow prerequisites before logging time'});
+    if(['Completed','Lost/Cancelled','Not Required','No-Go (Client)','No-Go (DOA)','Lost (DOA)'].includes(t.status)||!WF.canUpdateTask(db,p,user,ps,t))return send(res,403,{error:'Reopen completed work or wait for workflow prerequisites before logging time'});
     const hours=Number(b.hours), description=String(b.description||'').trim();
     if(planningDateError(b.date,b.date)||!b.date||b.date>new Date().toISOString().slice(0,10)||!Number.isFinite(hours)||hours<=0||hours>24||!description||description.length>2000)return send(res,422,{error:'Enter a valid date up to today, hours above zero and at most 24, and a description (maximum 2000 characters)'});
     const entryId=String(b.entryId||''); if(!/^[a-zA-Z0-9-]{8,100}$/.test(entryId))return send(res,422,{error:'A unique time entry reference is required'});
@@ -460,7 +484,7 @@ const server = http.createServer(async(req,res)=>{ let release;try{
     const start=u.searchParams.get('start')||new Date().toISOString().slice(0,10), days=Math.min(90,Math.max(1,Number(u.searchParams.get('days')||14))), standard=Number(db.settings.standardHoursPerDay||8);
     if(!validDate(start)||!Number.isFinite(days))return send(res,400,{error:'Invalid capacity date or day count'});
     const dates=[]; let d=new Date(`${start}T00:00:00Z`); for(let i=0;i<days;i++){dates.push(d.toISOString().slice(0,10));d.setUTCDate(d.getUTCDate()+1);}
-    const rows=db.users.filter(x=>x.active).map(person=>{ const booked={},allocations={}; for(const t of db.tasks.filter(t=>t.assignee===person.name&&Number(t.level||3)>=3&&!['Completed','Lost/Cancelled'].includes(t.status)&&canReadTask(t,ps,project(db,t.projectId),db,user))){ const spread=t.plannedAllocations||spreadHours(t.startDate,Number(t.mhEstimate||0),standard,t.dueDate); for(const [dt,h] of Object.entries(spread)){booked[dt]=(booked[dt]||0)+h;(allocations[dt]||=[]).push({taskId:t.id,hours:h});} } const cells=dates.map(date=>{ const leave=db.leave.find(l=>l.user===person.name&&l.date===date); const weekend=[0,6].includes(new Date(`${date}T00:00:00Z`).getUTCDay()); const cap=weekend||leave?0:Number(person.capacity||standard); const used=Number(booked[date]||0); return {date,booked:used,capacity:cap,free:Math.max(0,cap-used),leave:leave?.type||'',allocations:allocations[date]||[]}; }); return {user:person.name,position:person.position,capacity:Number(person.capacity||standard),cells}; });
+    const rows=db.users.filter(x=>x.active).map(person=>{ const booked={},allocations={}; for(const t of db.tasks.filter(t=>t.assignee===person.name&&Number(t.level||3)>=3&&!['Completed','Lost/Cancelled','Not Required','No-Go (Client)','No-Go (DOA)','Lost (DOA)'].includes(t.status)&&canReadTask(t,ps,project(db,t.projectId),db,user))){ const spread=t.plannedAllocations||spreadHours(t.startDate,Number(t.mhEstimate||0),standard,t.dueDate); for(const [dt,h] of Object.entries(spread)){booked[dt]=(booked[dt]||0)+h;(allocations[dt]||=[]).push({taskId:t.id,hours:h});} } const cells=dates.map(date=>{ const leave=db.leave.find(l=>l.user===person.name&&l.date===date); const weekend=[0,6].includes(new Date(`${date}T00:00:00Z`).getUTCDay()); const cap=weekend||leave?0:Number(person.capacity||standard); const used=Number(booked[date]||0); return {date,booked:used,capacity:cap,free:Math.max(0,cap-used),leave:leave?.type||'',allocations:allocations[date]||[]}; }); return {user:person.name,position:person.position,capacity:Number(person.capacity||standard),cells}; });
     return send(res,200,{start,days,rows});
   }
   if(req.method==='POST'&&u.pathname==='/api/leave'){
@@ -507,7 +531,7 @@ const server = http.createServer(async(req,res)=>{ let release;try{
   }
 
   if(req.method==='PATCH'&&u.pathname==='/api/settings'){
-    if(!ps.manageSettings)return send(res,403,{error:'Manage Settings permission required'}); const b=await body(req),before=structuredClone(db.settings); if(Object.hasOwn(b,'standardHoursPerDay')&&(!Number.isFinite(Number(b.standardHoursPerDay))||Number(b.standardHoursPerDay)<=0||Number(b.standardHoursPerDay)>24))return send(res,422,{error:'Standard hours must be greater than zero and at most 24'}); db.settings={...db.settings,...b}; audit(db,user,'Updated system settings',{entityType:'settings',changes:diff(before,db.settings,Object.keys(b))}); write(db); return send(res,200,{ok:true,settings:db.settings});
+    if(!ps.manageSettings)return send(res,403,{error:'Manage Settings permission required'}); const b=await body(req),before=structuredClone(db.settings);if(b.registerConfig&&Register.error(b.registerConfig))return send(res,422,{error:Register.error(b.registerConfig)}); if(Object.hasOwn(b,'standardHoursPerDay')&&(!Number.isFinite(Number(b.standardHoursPerDay))||Number(b.standardHoursPerDay)<=0||Number(b.standardHoursPerDay)>24))return send(res,422,{error:'Standard hours must be greater than zero and at most 24'}); db.settings={...db.settings,...b}; audit(db,user,'Updated system settings',{entityType:'settings',changes:diff(before,db.settings,Object.keys(b))}); write(db); return send(res,200,{ok:true,settings:db.settings});
   }
   if(req.method==='POST'&&u.pathname==='/api/notifications/read'){
     const b=await body(req),ids=b.ids||db.notifications.map(n=>n.id); db.notifications.forEach(n=>{n.readBy||=[];if(ids.includes(n.id)&&!n.readBy.includes(user.name))n.readBy.push(user.name)}); write(db); return send(res,200,{ok:true});

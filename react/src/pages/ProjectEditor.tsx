@@ -180,8 +180,8 @@ export default function ProjectEditor({
             );
           }}
         >
-          {canCommercial && <option value="commercial">Commercial RFQ</option>}
-          {canEer && <option value="internal_eer">Internal EER</option>}
+          {canCommercial && <option value="commercial">Projects</option>}
+          {canEer && <option value="internal_eer">Internal</option>}
         </select>
       </label>
       <label>

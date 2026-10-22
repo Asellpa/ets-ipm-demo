@@ -1,4 +1,5 @@
 export type ObjectField = {
+  section?: string;
   id: string;
   label: string;
   type: 'text' | 'textarea' | 'date' | 'number' | 'select' | 'checkbox';
@@ -180,6 +181,7 @@ export default function WorkflowFieldsEditor({
                     onChange={(e) => update(f.id, { label: e.target.value })}
                   />
                 </label>
+                <label>Section<input aria-label={'Field section '+(index+1)} value={f.section||''} maxLength={120} onChange={e=>update(f.id,{section:e.target.value})}/></label>
                 <label>
                   Field type
                   <select

@@ -73,3 +73,11 @@ Remaining: formal time-entry correction/reversal and approval, automatic resched
 Implemented a separate Commercial tracker template from the supplied Trial 14 commercial form and CSV headers, organised into standard lifecycle objects. Pricing/quotes remain restricted. Commercial Grid supports task expansion and hour rollups; Kanban groups by Status, Commercial stage or read-only Workflow phase. Completion cannot bypass object sign-off. Existing snapshots, custom workflow defaults and the Internal EER template are preserved; source customer records were not imported.
 
 Pending: owner acceptance against Stephan's actual day-to-day usage, explicit migration/import mapping of existing customer records if requested, and a corresponding Internal EER template adaptation. Object attachments remain pending.
+
+## Corrected project/department demo flow — 22 October 2026
+
+Supersedes the earlier Commercial tracker template design. The catalogue is migrated once to Projects and Internal; existing project snapshots/history survive. Overview contains grouped reference-tracker fields; schedule/hour information is grouped separately. Department tasks can run in parallel with overview entry. No demonstration projects are seeded.
+
+Implemented compact Kanban, native project popup with full-window expansion, department task creation and inline status/owner/priority, count-based task progress with explicit exclusions, administrator register visibility/editability, and permission-filtered Internal↔Project links. WBS means Work Breakdown Structure, with project/department/task levels. Source files remain reference material rather than live data imports.
+
+Pending owner acceptance and any requested import of real tracker rows. Attachments, time-entry corrections/approvals and production hosting/security remain separate backlog items. Internal tracker-specific form adaptation remains pending; its existing workflow content is retained.

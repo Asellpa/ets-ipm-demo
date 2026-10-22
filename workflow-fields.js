@@ -81,6 +81,7 @@ function validateSchema(node) {
       !["general", "commercial"].includes(f.dataGroup || "general")
     )
       return "Invalid or duplicate object field";
+    if(f.section!==undefined&&(typeof f.section!=="string"||f.section.length>120))return "Invalid field section";
     ids.add(f.id);
     if (
       f.projectField &&

@@ -14,36 +14,7 @@ function standardNodes() {
   return F.defaultNodes(LIFECYCLE);
 }
 function defaultConfig() {
-  return {
-    templateCatalog: {commercialTracker: 1},
-    workflows: [
-      {
-        id: "commercial",
-        name: "Commercial project",
-        stages: [...LIFECYCLE],
-        objects: [],
-        nodes: standardNodes(),
-      },
-      {
-        id: "eer",
-        name: "Internal EER",
-        stages: [...LIFECYCLE],
-        objects: [],
-        nodes: standardNodes(),
-      },
-      Tracker.create(),
-    ],
-    projectTypes: [
-      {
-        id: "commercial",
-        name: "Commercial project",
-        workflowId: Tracker.id,
-      },
-      { id: "internal_eer", name: "Internal EER", workflowId: "eer" },
-    ],
-    register: {},
-    resource: { standardHoursPerDay: 8 },
-  };
+ return {templateCatalog:{simplifiedProjects:2,commercialTracker:1},workflows:[Tracker.projects(),{id:'eer',name:'Internal',stages:[...LIFECYCLE],objects:[],nodes:standardNodes()}],projectTypes:[{id:'commercial',name:'Projects',workflowId:'commercial'},{id:'internal_eer',name:'Internal',workflowId:'eer'}],register:{},resource:{standardHoursPerDay:8}};
 }
 function nodesFor(w) {
   const nodes = w.nodes?.length
@@ -79,6 +50,10 @@ function nodesFor(w) {
 function upgradeConfig(config) {
   if (!config) return defaultConfig();
   const cfg = structuredClone(config);
+  if(!cfg.templateCatalog?.simplifiedProjects){
+    const next=defaultConfig();cfg.workflows=next.workflows;cfg.projectTypes=next.projectTypes;cfg.templateCatalog={...cfg.templateCatalog,...next.templateCatalog};return cfg;
+  }
+
   for (const w of cfg.workflows) {
     const nodes = nodesFor(w),
       roots = nodes.filter((n) => !n.parent);
@@ -319,10 +294,10 @@ function blockers(db, p, instance, node) {
   const tasks = db.tasks.filter(
     (t) =>
       t.projectId === p.id &&
-      t.workflowNodeId === node.id &&
+      (t.workflowNodeId === node.id || (instance.workflowId === "commercial" && node.id === "execution")) &&
       Number(t.level || 3) >= 3,
   );
-  if (tasks.some((t) => t.status !== "Completed"))
+  if (tasks.some((t) => !["Completed","Not Required","Lost/Cancelled","No-Go (Client)","No-Go (DOA)","Lost (DOA)"].includes(t.status)))
     result.push("Complete all linked tasks first");
   if (node.completion === "tasks" && !tasks.length)
     result.push("Link at least one task");

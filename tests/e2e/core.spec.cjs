@@ -15,13 +15,13 @@ test('login, create internal project, create task, and verify persistence',async
  await page.getByLabel('Record name (optional)').fill('Playwright isolated project');
  await page.getByRole('button',{name:'Save project'}).click();
  await expect(page.getByText('Playwright isolated project')).toBeVisible();
- await page.getByRole('button',{name:'Tasks & Work Packages'}).click();
+ if(await page.getByRole('dialog',{name:/^Project:/}).count())await page.getByRole('button',{name:'Close project',exact:true}).click();await page.getByRole('button',{name:'Tasks & Departments'}).click();
  await page.getByRole('button',{name:'+ Add',exact:true}).click();await page.getByRole('button',{name:'New task',exact:true}).click();
  await page.getByLabel('Title').fill('Playwright isolated task');
  await page.getByRole('button',{name:'Save task'}).click();
  await expect(page.getByText('Playwright isolated task')).toBeVisible();
  await page.reload();
- await page.getByRole('button',{name:'Tasks & Work Packages'}).click();
+ if(await page.getByRole('dialog',{name:/^Project:/}).count())await page.getByRole('button',{name:'Close project',exact:true}).click();await page.getByRole('button',{name:'Tasks & Departments'}).click();
  await expect(page.getByText('Playwright isolated task')).toBeVisible();
 });
 test('role management loads server permissions and settings screen opens',async({page})=>{

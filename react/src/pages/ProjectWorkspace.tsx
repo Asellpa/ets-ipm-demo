@@ -1,5 +1,6 @@
+import {taskStatuses} from '../project-utils';
 import TimeLog from '../components/TimeLog';
-import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
+import { Fragment, useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
 import { request, type Project, type Session, type Task } from '../api';
 import type { ObjectField } from './WorkflowFieldsEditor';
 type History = { action: string; comment: string; user: string; at: string };
@@ -93,7 +94,7 @@ function TaskRow({
               value={status}
               onChange={(e) => setStatus(e.target.value)}
             >
-              {['To Do', 'Assigned', 'In Progress', 'DOA - Review', 'TL - Review', 'Completed'].map(
+              {taskStatuses.map(
                 (s) => (
                   <option key={s}>{s}</option>
                 ),
@@ -259,8 +260,8 @@ function ObjectDetails({
             void mutate('save');
           }}
         >
-          {node.fields.map((field) => (
-            <label key={field.id}>
+          {node.fields.map((field,index) => (
+            <Fragment key={field.id}>{field.section!==node.fields[index-1]?.section&&field.section&&<h3 className="object-field-section">{field.section}</h3>}<label>
               {field.label}
               {field.required ? ' *' : ''}
               {field.type === 'textarea' ? (
@@ -310,7 +311,7 @@ function ObjectDetails({
                   }
                 />
               )}
-            </label>
+            </label></Fragment>
           ))}
           {node.canEdit && <button disabled={busy}>Save object fields</button>}
         </form>
@@ -505,18 +506,22 @@ function ObjectDetails({
 }
 export default function ProjectWorkspace({
   project,
+  initialNodeId,
+  embedded,
   data,
   onBack,
   onRefresh,
 }: {
   project: Project;
+  initialNodeId?: string;
+  embedded?: boolean;
   data: Session;
   onBack: () => void;
   onRefresh: () => Promise<void>;
 }) {
   const [instance, setInstance] = useState<Instance | null>(null);
   const [loading, setLoading] = useState(true);
-  const [selected, setSelected] = useState('');
+  const [selected, setSelected] = useState(initialNodeId||'');
   const [error, setError] = useState('');
   const [templates, setTemplates] = useState<{ id: string; name: string }[]>([]);
   const [template, setTemplate] = useState('');
@@ -605,7 +610,7 @@ export default function ProjectWorkspace({
   }
   return (
     <>
-      <div className="toolbar">
+      <div className={embedded?"embedded-workflow-toolbar":"toolbar"}>
         <button onClick={onBack}>← Project register</button>
         <button
           disabled={busy}
@@ -614,7 +619,7 @@ export default function ProjectWorkspace({
           Refresh project
         </button>
       </div>
-      <section className="panel project-summary">
+      <section className={embedded?"embedded-project-summary":"panel project-summary"}>
         <div>
           <small>Project {project.wbs}</small>
           <h2>{project.title}</h2>
