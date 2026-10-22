@@ -349,6 +349,7 @@ function ObjectDetails({
             canLog={data.users.find(u=>u.name===data.user)?.resourceEnabled!==false && task.assignee === data.user && !!data.permissions.updateActualMH && !busy}
             canAssign={node.canEdit && !!data.permissions.assignTasks}
             canUpdate={
+              data.users.find(u=>u.name===data.user)?.resourceEnabled!==false &&
               !task.workflowLocked &&
               node.status === 'In progress' &&
               !!data.permissions.updateActualMH &&
