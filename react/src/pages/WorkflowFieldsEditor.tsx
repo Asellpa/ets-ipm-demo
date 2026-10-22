@@ -2,13 +2,14 @@ export type ObjectField = {
   section?: string;
   id: string;
   label: string;
-  type: 'text' | 'textarea' | 'date' | 'number' | 'select' | 'checkbox';
+  type: 'text' | 'textarea' | 'date' | 'number' | 'select' | 'checkbox' | 'user' | 'users';
   required: boolean;
   dataGroup?: 'general' | 'commercial';
   options?: string[];
   projectField?: string;
   min?: number;
 };
+const financialLabel=(text:string)=>/\b(budget|cost|costs|pricing|price|rom|quote|quotation|negotiation|offer|agreement|purchase order|po status|hourly rate|labour rate|labor rate|mh rate)\b/i.test(text);
 const presets: Omit<ObjectField, 'id'>[] = [
   { label: 'Project name', type: 'text', required: true, projectField: 'title' },
   { label: 'Start date', type: 'date', required: true, projectField: 'startDate' },
@@ -34,7 +35,8 @@ const presets: Omit<ObjectField, 'id'>[] = [
   },
   { label: 'Required inputs', type: 'textarea', required: false, projectField: 'requiredInputs' },
   { label: 'Deliverables', type: 'textarea', required: false, projectField: 'deliverables' },
-  { label: 'Team members', type: 'textarea', required: true },
+  { label: 'Object owner', type:'user',required:false },
+  { label: 'Team members', type: 'users', required: true },
   { label: 'Supervision and responsibilities', type: 'textarea', required: true },
   { label: 'Estimated hours', type: 'number', required: false, min: 0 },
   { label: 'Budget estimate', type: 'number', required: false, min: 0, dataGroup: 'commercial' },
@@ -111,7 +113,7 @@ export default function WorkflowFieldsEditor({
           <h3>{name} — object form</h3>
           <p className="muted">
             Define the fields users fill in on this page after creating a project. Template fields
-            contain no project data.
+            contain no project data. Budget and pricing fields are restricted to profiles with commercial-data access; that protection also applies to objects beneath a budget object.
           </p>
         </div>
         <button
@@ -179,10 +181,10 @@ export default function WorkflowFieldsEditor({
                     aria-label={'Field label ' + (index + 1)}
                     maxLength={120}
                     value={f.label}
-                    onChange={(e) => update(f.id, { label: e.target.value })}
+                    onChange={(e) => update(f.id, { label: e.target.value,...(financialLabel(e.target.value)?{dataGroup:'commercial' as const}:{}) })}
                   />
                 </label>
-                <label>Section<input aria-label={'Field section '+(index+1)} value={f.section||''} maxLength={120} onChange={e=>update(f.id,{section:e.target.value})}/></label>
+                <label>Section<input aria-label={'Field section '+(index+1)} value={f.section||''} maxLength={120} onChange={e=>update(f.id,{section:e.target.value,...(financialLabel(e.target.value)?{dataGroup:'commercial' as const}:{})})}/></label>
                 <label>
                   Field type
                   <select
@@ -199,7 +201,7 @@ export default function WorkflowFieldsEditor({
                       });
                     }}
                   >
-                    {f.projectField==='owner'?<option value={f.type}>User dropdown (database)</option>:['text', 'textarea', 'date', 'number', 'select', 'checkbox'].map((type) => (
+                    {f.projectField==='owner'?<option value={f.type}>User dropdown (database)</option>:['text', 'textarea', 'date', 'number', 'select', 'checkbox','user','users'].map((type) => (
                       <option key={type} value={type}>
                         {
                           {
@@ -208,7 +210,7 @@ export default function WorkflowFieldsEditor({
                             date: 'Date',
                             number: 'Number',
                             select: 'Choice list',
-                            checkbox: 'Checkbox',
+                            checkbox: 'Checkbox',user:'Team member (database)',users:'Team members (database)',
                           }[type]
                         }
                       </option>
@@ -228,8 +230,8 @@ export default function WorkflowFieldsEditor({
                   Visibility
                   <select
                     aria-label={'Field visibility ' + (index + 1)}
-                    value={f.dataGroup || 'general'}
-                    disabled={[
+                    value={financialLabel(name)||financialLabel(f.label)||financialLabel(f.section||'')?'commercial':f.dataGroup || 'general'}
+                    disabled={financialLabel(name)||financialLabel(f.label)||financialLabel(f.section||'')||[
                       'rom',
                       'poStatus',
                       'negotiationNotes',
@@ -326,7 +328,7 @@ export default function WorkflowFieldsEditor({
             <label key={f.id}>
               {f.label}
               {f.required ? ' *' : ''}
-              {f.projectField==='owner'?<select disabled><option>Select an existing active user…</option></select>:f.type === 'textarea' ? (
+              {['user','users'].includes(f.type)?<select disabled multiple={f.type==='users'}><option>Existing active team members</option></select>:f.projectField==='owner'?<select disabled><option>Select an existing active user…</option></select>:f.type === 'textarea' ? (
                 <textarea disabled placeholder="Fill in after project creation" />
               ) : f.type === 'select' ? (
                 <select disabled>

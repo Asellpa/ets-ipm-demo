@@ -1,3 +1,4 @@
+const {financialFile,financialNode}=require('./financial-access');
 const crypto=require('node:crypto');
 const MAX_FILE=2*1024*1024,MAX_PROJECT=20*1024*1024;
 const formats={pdf:['application/pdf',b=>b.subarray(0,5).toString()==='%PDF-'],png:['image/png',b=>b.subarray(0,8).equals(Buffer.from([137,80,78,71,13,10,26,10]))],jpg:['image/jpeg',b=>b[0]===255&&b[1]===216&&b[2]===255],jpeg:['image/jpeg',b=>b[0]===255&&b[1]===216&&b[2]===255],txt:['text/plain',b=>!b.includes(0)&&Buffer.from(b.toString('utf8')).equals(b)],csv:['text/csv',b=>!b.includes(0)&&Buffer.from(b.toString('utf8')).equals(b)]};
@@ -17,24 +18,25 @@ async function handleAttachments(ctx){
  if(!match)return false;
  const pid=decodeURIComponent(match[1]),nodeId=decodeURIComponent(match[2]),aid=match[3]&&decodeURIComponent(match[3]),p=project(db,pid),instance=db.projectWorkflows[pid];
  if(!p||!instance?.nodes.some(n=>n.id===nodeId)||!canReadTask({},ps,p,db,user)||!WF.canRead(db,p,user,ps,nodeId)){send(res,404,{error:'Object not found or access restricted'});return true;}
- const files=db.objectAttachments ||= [];
+ const files=db.objectAttachments ||= [];const node=instance.nodes.find(n=>n.id===nodeId);const visible=f=>!financialFile(f,node,instance.nodes)||!!ps.viewCommercialFields;
  if(req.method==='GET'){
-  if(!aid)send(res,200,{attachments:files.filter(f=>f.projectId===pid&&f.nodeId===nodeId).map(f=>({...metadata(f),canRemove:f.uploadedById===user.id||!!ps.editProjects})),canEdit:!WF.editError(db,p,user,ps,nodeId)});
-  else{const f=files.find(f=>f.id===aid&&f.projectId===pid&&f.nodeId===nodeId);if(!f)send(res,404,{error:'Attachment not found'});else send(res,200,Buffer.from(f.data,'base64'),f.mime,{'Content-Disposition':`attachment; filename="${f.name.replace(/[^a-zA-Z0-9._ -]/g,'_')}"; filename*=UTF-8''${encodeURIComponent(f.name).replace(/['()*]/g,c=>'%'+c.charCodeAt(0).toString(16))}`,'X-Content-Type-Options':'nosniff','Content-Security-Policy':"default-src 'none'; sandbox"});}
+  if(!aid)send(res,200,{attachments:files.filter(f=>f.projectId===pid&&f.nodeId===nodeId&&visible(f)).map(f=>({...metadata(f),canRemove:f.uploadedById===user.id||!!ps.editProjects})),canEdit:!WF.editError(db,p,user,ps,nodeId)&&(!financialNode(instance.nodes,node)||!!ps.viewCommercialFields)});
+  else{const f=files.find(f=>f.id===aid&&f.projectId===pid&&f.nodeId===nodeId);if(!f||!visible(f))send(res,404,{error:'Attachment not found'});else send(res,200,Buffer.from(f.data,'base64'),f.mime,{'Content-Disposition':`attachment; filename="${f.name.replace(/[^a-zA-Z0-9._ -]/g,'_')}"; filename*=UTF-8''${encodeURIComponent(f.name).replace(/['()*]/g,c=>'%'+c.charCodeAt(0).toString(16))}`,'X-Content-Type-Options':'nosniff','Content-Security-Policy':"default-src 'none'; sandbox"});}
   return true;
  }
  const locked=WF.editError(db,p,user,ps,nodeId);if(locked){send(res,403,{error:locked});return true;}
  if(req.method==='POST'&&!aid){
-  const checked=validateFile(await body(req));if(checked.error){send(res,422,{error:checked.error});return true;}
+  const b=await body(req);if(b.dataGroup!==undefined&&!['general','commercial'].includes(b.dataGroup)){send(res,422,{error:'Choose a valid attachment visibility'});return true;}const checked=validateFile(b);if(checked.error){send(res,422,{error:checked.error});return true;}
+  const restricted=financialFile({...checked,dataGroup:b.dataGroup},node,instance.nodes);if(restricted&&!ps.viewCommercialFields){send(res,403,{error:'Restricted commercial permission required for this attachment'});return true;}
   if(files.filter(f=>f.projectId===pid&&f.nodeId===nodeId).length>=20||files.filter(f=>f.projectId===pid).reduce((n,f)=>n+f.size,0)+checked.size>MAX_PROJECT){send(res,422,{error:'Attachment limit reached: 20 files per object and 20 MB per project'});return true;}
-  const f={...checked,id:id('file'),projectId:pid,nodeId,uploadedBy:user.name,uploadedById:user.id,uploadedAt:now()};files.push(f);instance.revision++;
-  audit(db,user,'Attached '+f.name,{entityType:'attachment',entityId:f.id,projectId:pid,workflowNodeId:nodeId});write(db);send(res,201,{attachment:metadata(f)});return true;
+  const f={...checked,dataGroup:restricted?'commercial':'general',id:id('file'),projectId:pid,nodeId,uploadedBy:user.name,uploadedById:user.id,uploadedAt:now()};files.push(f);instance.revision++;
+  audit(db,user,'Attached '+f.name,{entityType:'attachment',entityId:f.id,projectId:pid,workflowNodeId:nodeId,dataGroup:financialFile(f,node,instance.nodes)?'commercial':'general'});write(db);send(res,201,{attachment:metadata(f)});return true;
  }
  if(req.method==='DELETE'&&aid){
-  const f=files.find(f=>f.id===aid&&f.projectId===pid&&f.nodeId===nodeId);if(!f){send(res,404,{error:'Attachment not found'});return true;}
+  const f=files.find(f=>f.id===aid&&f.projectId===pid&&f.nodeId===nodeId);if(!f||!visible(f)){send(res,404,{error:'Attachment not found'});return true;}
   if(f.uploadedById!==user.id&&!ps.editProjects){send(res,403,{error:'Only the uploader or a project editor can remove an attachment'});return true;}
   db.objectAttachments=files.filter(x=>x.id!==aid);instance.revision++;
-  audit(db,user,'Removed attachment '+f.name,{entityType:'attachment',entityId:f.id,projectId:pid,workflowNodeId:nodeId});write(db);send(res,200,{ok:true});return true;
+  audit(db,user,'Removed attachment '+f.name,{entityType:'attachment',entityId:f.id,projectId:pid,workflowNodeId:nodeId,dataGroup:financialFile(f,node,instance.nodes)?'commercial':'general'});write(db);send(res,200,{ok:true});return true;
  }
  send(res,405,{error:'Unsupported attachment action'});return true;
 }

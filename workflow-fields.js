@@ -1,3 +1,5 @@
+const {financialField}=require('./financial-access');
+const {isResource}=require('./resource-policy');
 const PROJECT_FIELDS = new Set([
   "title",
   "client",
@@ -35,6 +37,8 @@ const TYPES = new Set([
   "number",
   "select",
   "checkbox",
+  "user",
+  "users",
 ]);
 const field = (id, label, type = "text", required = false, extra = {}) => ({
   id,
@@ -54,11 +58,12 @@ function fieldsFor(node) {
 function visibleFields(node, p, ps) {
   return fieldsFor(node).filter(
     (f) =>
-      f.dataGroup !== "commercial" ||
+      !financialField(f,node) ||
       (p.type === "commercial" && ps.viewCommercialFields),
   );
 }
-function applies(f, p) {
+function applies(f, p, node) {
+  if(financialField(f,node)&&p.type!=="commercial")return false;
   return f.dataGroup !== "commercial" || p.type === "commercial";
 }
 function validateSchema(node) {
@@ -83,6 +88,7 @@ function validateSchema(node) {
       return "Invalid or duplicate object field";
     if(f.section!==undefined&&(typeof f.section!=="string"||f.section.length>120))return "Invalid field section";
     ids.add(f.id);
+    if (["user","users"].includes(f.type)&&f.projectField)return "Team fields cannot map to text project fields";
     if (
       f.projectField &&
       !PROJECT_FIELDS.has(f.projectField) &&
@@ -139,6 +145,8 @@ function validateValues(node, p, ps, values, users) {
     if (f.projectField === 'owner' && value && value!==p.owner && users && !users.some(u=>u.active && u.name===value))
       return {error: 'Project owner must be an active existing user'};
     if (value) {
+      if(f.type==='user'&&(!users||!users.some(u=>u.id===value&&u.active&&isResource(u))))return {error:f.label+': select an active team member'};
+      if(f.type==='users'){let ids;try{ids=JSON.parse(value)}catch{return {error:f.label+': select team members from the list'}}if(!Array.isArray(ids)||ids.length>100||new Set(ids).size!==ids.length||ids.some(id=>typeof id!=='string'||!users?.some(u=>u.id===id&&u.active&&isResource(u))))return {error:f.label+': select active team members only'};}
       if (f.type === "date" && !validDate(value))
         return {
           error: f.label + ": enter a valid date between 1900 and 2100",
@@ -180,10 +188,10 @@ function validateValues(node, p, ps, values, users) {
 function missingRequired(node, state, p) {
   return fieldsFor(node).some(
     (f) =>
-      applies(f, p) &&
+      applies(f, p, node) &&
       f.required &&
       (!Object.hasOwn(state.values || {}, f.id) ||
-        !(f.type === "checkbox"
+        !(f.type === "users" ? (()=>{try{return JSON.parse(state.values[f.id]||'[]').length>0}catch{return false}})() : f.type === "checkbox"
           ? state.values[f.id] === "true"
           : String(state.values[f.id] || "").trim())),
   );
@@ -258,7 +266,8 @@ function defaultNodes(names) {
       }),
     ]),
     node("planning-team", "Team", "phase-1", [
-      field("team", "Team members and responsibilities", "textarea", true),
+      field("team", "Team members", "users", true),
+      field("responsibilities", "Team responsibilities", "textarea", false),
     ]),
     node("planning-roles", "Supervision", "phase-1", [
       field(

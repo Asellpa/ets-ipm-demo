@@ -7,3 +7,5 @@ export const isApplicable=(t:Task)=>Number(t.level||3)>=3&&!excludedTaskStatuses
 export const isOpenTask=(t:Task)=>isApplicable(t)&&t.status!=='Completed';
 export function progress(tasks:Task[]){const applicable=tasks.filter(isApplicable);const done=applicable.filter(t=>t.status==='Completed').length;return {done,total:applicable.length,percent:applicable.length?Math.round(done/applicable.length*100):0};}
 export function departmentName(s:string){return /^(M&I|Method|Methods)/i.test(s)?departments[0]:/^(P&S|Projects.*Support)/i.test(s)?departments[1]:/^Cert/i.test(s)?departments[2]:s;}
+
+export function statusTone(status:string){const s=status.toLowerCase();if(/lost|cancel|no-go/.test(s))return 'red';if(/on hold|blocked|bottleneck/.test(s))return 'yellow';if(/completed|signed off/.test(s))return 'teal';if(/progress|ongoing|implementation/.test(s))return 'green';if(/review|approval/.test(s))return 'purple';return 'blue';}

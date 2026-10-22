@@ -267,7 +267,8 @@ function ObjectDetails({
             <Fragment key={field.id}>{field.section!==node.fields[index-1]?.section&&field.section&&<h3 className="object-field-section">{field.section}</h3>}<label>
               {field.label}
               {field.required ? ' *' : ''}
-              {field.projectField === 'owner' ? (<select aria-label={field.label} disabled={!node.canEdit||busy} value={values[field.id]||''} onChange={e=>setValues(current=>({...current,[field.id]:e.target.value}))}><option value="">Select owner…</option>{values[field.id]&&!data.users.some(u=>u.name===values[field.id])&&<option disabled value={values[field.id]}>{values[field.id]} (unavailable)</option>}{data.users.map(u=><option key={u.id} value={u.name}>{u.name}</option>)}</select>) : field.type === 'textarea' ? (
+              {field.type==='users'&&<small className="field-help">Select one or more people. Use Ctrl or Command to select multiple names.</small>}
+              {field.type==='user'||field.type==='users' ? (<select aria-label={field.label} multiple={field.type==='users'} disabled={!node.canEdit||busy} value={field.type==='users'?(()=>{try{return JSON.parse(values[field.id]||'[]') as string[]}catch{return []}})():(values[field.id]||'')} onChange={e=>setValues(current=>({...current,[field.id]:field.type==='users'?JSON.stringify(Array.from(e.target.selectedOptions,o=>o.value)):e.target.value}))}>{field.type==='user'&&<option value="">Select team member…</option>}{data.users.filter(u=>u.resourceEnabled!==false).map(u=><option key={u.id} value={u.id}>{u.name}</option>)}</select>) : field.projectField === 'owner' ? (<select aria-label={field.label} disabled={!node.canEdit||busy} value={values[field.id]||''} onChange={e=>setValues(current=>({...current,[field.id]:e.target.value}))}><option value="">Select owner…</option>{values[field.id]&&!data.users.some(u=>u.name===values[field.id])&&<option disabled value={values[field.id]}>{values[field.id]} (unavailable)</option>}{data.users.map(u=><option key={u.id} value={u.name}>{u.name}</option>)}</select>) : field.type === 'textarea' ? (
                 <textarea
                   aria-label={field.label}
                   disabled={!node.canEdit || busy}
@@ -495,7 +496,7 @@ function ObjectDetails({
           {error}
         </p>
       )}
-      <ObjectAttachments key={project.id+node.id} projectId={project.id} nodeId={node.id} canEdit={node.canEdit&&!busy} onChanged={onChange}/>
+      <ObjectAttachments key={project.id+node.id} projectId={project.id} nodeId={node.id} canEdit={node.canEdit&&!busy} canViewCommercial={!!data.permissions.viewCommercialFields} onChanged={onChange}/>
       {node.history?.length > 0 && (
         <details className="object-history">
           <summary>Object history ({node.history.length})</summary>
@@ -537,7 +538,7 @@ export default function ProjectWorkspace({
     const result = await request<{ workflow: Instance | null; canAttach: boolean }>(
       '/projects/' + encodeURIComponent(project.id) + '/workflow',
     );
-    setInstance(result.workflow);
+    setInstance(previous=>JSON.stringify(previous)===JSON.stringify(result.workflow)?previous:result.workflow);
     setCanAttach(result.canAttach);
     setSelected((current) =>
       result.workflow?.nodes.some((n) => n.id === current)
@@ -572,6 +573,8 @@ export default function ProjectWorkspace({
   }, [load, onRefresh]);
   useEffect(() => {
     const timer = window.setInterval(() => {
+      if(document.hidden)return;
+      const modal=document.querySelector('.project-popup[open]');if(modal?.contains(document.activeElement)&&document.activeElement?.matches('input,textarea,select'))return;
       void load().catch(() => {});
     }, 5000);
     return () => window.clearInterval(timer);

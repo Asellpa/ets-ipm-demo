@@ -1,3 +1,4 @@
+const {financialNode}=require('./financial-access');
 const crypto = require("node:crypto");
 const F = require("./workflow-fields");
 const Tracker = require("./commercial-tracker-template");
@@ -306,7 +307,7 @@ function blockers(db, p, instance, node) {
     !F.fieldsFor(node).some((f) => f.required)
   )
     result.push("Configure at least one required field");
-  if (F.missingRequired(node, state, p))
+  if (F.missingRequired({...node,financialRestricted:financialNode(instance.nodes,node)}, state, p))
     result.push("Fill all required fields");
   return result;
 }
@@ -347,15 +348,15 @@ function view(db, p, user, ps) {
         parent: n.parent,
         completion: n.completion,
         parallelWithPrevious: n.parallelWithPrevious,
-        fields: F.visibleFields(n, p, ps),
-        requiredFields: F.visibleFields(n, p, ps)
+        fields: F.visibleFields({...n,financialRestricted:financialNode(instance.nodes,n)}, p, ps),
+        requiredFields: F.visibleFields({...n,financialRestricted:financialNode(instance.nodes,n)}, p, ps)
           .filter((f) => f.required)
           .map((f) => f.id),
         requiresSignoff: requiresSignoff(instance, n),
         ...structuredClone(state),
         values: Object.fromEntries(
           Object.entries(state.values || {}).filter(([id]) =>
-            F.visibleFields(n, p, ps).some((f) => f.id === id),
+            F.visibleFields({...n,financialRestricted:financialNode(instance.nodes,n)}, p, ps).some((f) => f.id === id),
           ),
         ),
         blockers: blocked,
@@ -441,7 +442,7 @@ function transition(db, p, user, ps, nodeId, b) {
     const error = editError(db, p, user, ps, nodeId);
     if (error) return { status: 403, error };
     if (b.values !== undefined) {
-      const checked = F.validateValues(node, p, ps, b.values, db.users);
+      const checked = F.validateValues({...node,financialRestricted:financialNode(instance.nodes,node)}, p, ps, b.values, db.users);
       if (checked.error)
         return { status: checked.status || 422, error: checked.error };
       Object.assign(p, checked.updates);
