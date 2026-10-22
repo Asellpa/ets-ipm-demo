@@ -141,7 +141,7 @@ function spreadHours(startDate,total,max=8,dueDate='') {
   while(left>0&&guard++<75000){if(![0,6].includes(d.getUTCDay())){const h=Math.min(max,left);result[d.toISOString().slice(0,10)]=h;left-=h;}d.setUTCDate(d.getUTCDate()+1);}return result;
 }
 function isSystemAdmin(user){return user?.profileId==='prof-admin';}
-function protectedUser(user,target,nextProfile){return !isSystemAdmin(user)&&(isSystemAdmin(target)||nextProfile==='prof-admin');}
+function protectedUser(db,user,target,nextProfile){if(isSystemAdmin(user))return false;if(isSystemAdmin(target)||nextProfile==='prof-admin')return true;const actor=perms(db,user);return [target?.profileId,nextProfile].filter(Boolean).some(id=>PERMS.some(key=>db.profiles.find(p=>p.id===id)?.permissions?.[key]&&!actor[key]));}
 function ownerError(db,value,current){if(value!==undefined&&typeof value!=='string')return 'Project owner must be selected from existing users';return value && value!==current && !db.users.some(u=>u.active&&u.name===value)?'Project owner must be an active existing user':'';}
 function activeAdminCount(db){ return db.users.filter(u=>u.active && profileOf(db,u)?.permissions?.manageUsers && profileOf(db,u)?.permissions?.manageRoles).length; }
 function profileExists(db,pid){ return db.profiles.some(p=>p.id===pid); }
@@ -284,7 +284,7 @@ const server = http.createServer(async(req,res)=>{ let release;try{
     if(!ps.manageUsers)return send(res,403,{error:'Manage Users permission required'});
     const b=await body(req); if(!b.name||!b.username||!b.userId||!b.password||!b.profileId)return send(res,400,{error:'Name, username, User ID, password and profile are required'});
     if(String(b.password).length<6)return send(res,400,{error:'Password must be at least 6 characters'});
-    if(protectedUser(user,null,b.profileId))return send(res,403,{error:'Only System Administrators can assign System Administrator access'});
+    if(protectedUser(db,user,null,b.profileId))return send(res,403,{error:'You cannot assign a role with access above your own'});
     if(!profileExists(db,b.profileId))return send(res,400,{error:'Assigned profile does not exist'});
     if(uniqueUserConflict(db,null,b.username,b.userId))return send(res,409,{error:'Username or User ID already exists'});
     const nu={id:id('u'),name:String(b.name).trim(),username:String(b.username).trim(),userId:String(b.userId).trim(),email:String(b.email||'').trim(),position:String(b.position||'').trim(),capacity:Number(b.capacity||8),profileId:b.profileId,active:b.active!==false,createdAt:now(),createdBy:user.name,...hashPassword(b.password)};
@@ -293,7 +293,7 @@ const server = http.createServer(async(req,res)=>{ let release;try{
   if(req.method==='PATCH'&&/^\/api\/admin\/users\/[^/]+$/.test(u.pathname)){
     if(!ps.manageUsers)return send(res,403,{error:'Manage Users permission required'});
     const uid=u.pathname.split('/').pop(), target=db.users.find(x=>x.id===uid); if(!target)return send(res,404,{error:'User not found'});
-    const b=await body(req), before=structuredClone(target);if(protectedUser(user,target,b.profileId))return send(res,403,{error:'Only System Administrators can manage System Administrator accounts'});if(Object.hasOwn(b,'capacity')&&(!Number.isFinite(Number(b.capacity))||Number(b.capacity)<(isResource(target)?0.01:0)||Number(b.capacity)>24||(!isResource(target)&&Number(b.capacity)!==0)))return send(res,422,{error:'Daily capacity must be greater than zero and at most 24'});
+    const b=await body(req), before=structuredClone(target);if(protectedUser(db,user,target,b.profileId))return send(res,403,{error:'You cannot manage an account with access above your own'});if(Object.hasOwn(b,'capacity')&&(!Number.isFinite(Number(b.capacity))||Number(b.capacity)<(isResource(target)?0.01:0)||Number(b.capacity)>24||(!isResource(target)&&Number(b.capacity)!==0)))return send(res,422,{error:'Daily capacity must be greater than zero and at most 24'});
     const nextUsername=Object.hasOwn(b,'username')?String(b.username).trim():target.username, nextUserId=Object.hasOwn(b,'userId')?String(b.userId).trim():target.userId;
     if(!nextUsername||!nextUserId)return send(res,400,{error:'Username and User ID are required'});
     if(uniqueUserConflict(db,uid,nextUsername,nextUserId))return send(res,409,{error:'Username or User ID already exists'});
@@ -311,7 +311,7 @@ const server = http.createServer(async(req,res)=>{ let release;try{
   if(req.method==='POST'&&/^\/api\/admin\/users\/[^/]+\/password$/.test(u.pathname)){
     if(!ps.manageUsers)return send(res,403,{error:'Manage Users permission required'});
     const uid=u.pathname.split('/')[4], target=db.users.find(x=>x.id===uid), b=await body(req); if(!target)return send(res,404,{error:'User not found'});
-    if(protectedUser(user,target))return send(res,403,{error:'Only System Administrators can reset System Administrator passwords'});
+    if(protectedUser(db,user,target))return send(res,403,{error:'You cannot reset the password of an account with access above your own'});
     if(!b.password||String(b.password).length<6)return send(res,400,{error:'Password must be at least 6 characters'});
     Object.assign(target,hashPassword(b.password)); target.passwordChangedAt=now(); for(const[token,s]of sessions)if(s.userId===uid)sessions.delete(token);
     audit(db,user,`Reset password for ${target.name}`,{entityType:'user',entityId:target.id}); write(db); return send(res,200,{ok:true});
@@ -319,7 +319,7 @@ const server = http.createServer(async(req,res)=>{ let release;try{
   if(req.method==='POST'&&/^\/api\/admin\/users\/[^/]+\/offboard$/.test(u.pathname)){
     if(!ps.manageUsers)return send(res,403,{error:'Manage Users permission required'});
     const uid=u.pathname.split('/')[4], target=db.users.find(x=>x.id===uid), b=await body(req); if(!target)return send(res,404,{error:'User not found'});
-    if(protectedUser(user,target))return send(res,403,{error:'Only System Administrators can offboard System Administrators'});
+    if(protectedUser(db,user,target))return send(res,403,{error:'Only System Administrators can offboard System Administrators'});
     if(isSystemAdmin(target)&&db.users.filter(x=>x.active&&isSystemAdmin(x)).length<=1)return send(res,400,{error:'At least one active System Administrator must remain'});
     if(target.id===user.id)return send(res,400,{error:'You cannot offboard your own account'});
     if(target.active&&profileOf(db,target)?.permissions?.manageUsers&&profileOf(db,target)?.permissions?.manageRoles&&activeAdminCount(db)<=1)return send(res,400,{error:'At least one active administrator must remain'});
@@ -494,12 +494,12 @@ const server = http.createServer(async(req,res)=>{ let release;try{
   if(req.method==='POST'&&u.pathname==='/api/users'){
     if(!ps.manageTeam)return send(res,403,{error:'Manage Team permission required'}); const b=await body(req); if(!String(b.name||'').trim())return send(res,400,{error:'Name is required'});
     const nu={id:id('u'),name:String(b.name).trim(),username:String(b.username||b.name).trim(),userId:String(b.userId||Math.floor(Math.random()*900000+100000)),email:String(b.email||'').trim(),position:String(b.position||'').trim(),capacity:Number(b.capacity||8),profileId:b.profileId&&profileExists(db,b.profileId)?b.profileId:'prof-tse',active:b.active!==false};
-    if(protectedUser(user,null,nu.profileId))return send(res,403,{error:'Only System Administrators can assign System Administrator access'});
+    if(protectedUser(db,user,null,nu.profileId))return send(res,403,{error:'You cannot assign a role with access above your own'});
     if(uniqueUserConflict(db,null,nu.username,nu.userId))return send(res,409,{error:'Username or User ID already exists'}); db.users.push(nu); audit(db,user,`Added team member ${nu.name}`,{entityType:'user',entityId:nu.id}); write(db); return send(res,201,{ok:true,id:nu.id});
   }
   if(req.method==='PATCH'&&/^\/api\/users\/[^/]+$/.test(u.pathname)){
     if(!ps.manageTeam)return send(res,403,{error:'Manage Team permission required'}); const uid=u.pathname.split('/').pop(), target=db.users.find(x=>x.id===uid); if(!target)return send(res,404,{error:'User not found'}); const b=await body(req),before=structuredClone(target);if(Object.hasOwn(b,'capacity')&&(!Number.isFinite(Number(b.capacity))||Number(b.capacity)<(isResource(target)?0.01:0)||Number(b.capacity)>24||(!isResource(target)&&Number(b.capacity)!==0)))return send(res,422,{error:'Daily capacity must be greater than zero and at most 24'});
-    if(protectedUser(user,target))return send(res,403,{error:'Only System Administrators can manage System Administrator accounts'});
+    if(protectedUser(db,user,target))return send(res,403,{error:'You cannot manage an account with access above your own'});
     if(target.id===user.id&&b.active===false)return send(res,400,{error:'You cannot deactivate your own account'});
     if(isSystemAdmin(target)&&b.active===false&&db.users.filter(x=>x.active&&isSystemAdmin(x)).length<=1)return send(res,400,{error:'At least one active System Administrator must remain'});
     for(const k of ['name','email','position'])if(Object.hasOwn(b,k))target[k]=String(b[k]).trim(); if(Object.hasOwn(b,'capacity'))target.capacity=Number(b.capacity); if(Object.hasOwn(b,'active'))target.active=!!b.active;
@@ -507,7 +507,7 @@ const server = http.createServer(async(req,res)=>{ let release;try{
   }
   if(req.method==='DELETE'&&/^\/api\/users\/[^/]+$/.test(u.pathname)){
     if(!ps.manageTeam)return send(res,403,{error:'Manage Team permission required'}); const uid=u.pathname.split('/').pop(), target=db.users.find(x=>x.id===uid); if(!target)return send(res,404,{error:'User not found'}); if(target.id===user.id)return send(res,400,{error:'You cannot deactivate your own account'});
-    if(protectedUser(user,target))return send(res,403,{error:'Only System Administrators can manage System Administrator accounts'});
+    if(protectedUser(db,user,target))return send(res,403,{error:'You cannot manage an account with access above your own'});
     if(isSystemAdmin(target)&&db.users.filter(x=>x.active&&isSystemAdmin(x)).length<=1)return send(res,400,{error:'At least one active System Administrator must remain'});
     target.active=false; for(const[token,s]of sessions)if(s.userId===uid)sessions.delete(token); audit(db,user,`Deactivated team member ${target.name}`,{entityType:'user',entityId:uid}); write(db); return send(res,200,{ok:true});
   }

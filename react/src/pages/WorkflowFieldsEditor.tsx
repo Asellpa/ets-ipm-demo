@@ -9,7 +9,7 @@ export type ObjectField = {
   projectField?: string;
   min?: number;
 };
-const financialLabel=(text:string)=>/\b(budget|cost|costs|pricing|price|rom|quote|quotation|negotiation|offer|agreement|purchase order|po status|hourly rate|labour rate|labor rate|mh rate)\b/i.test(text);
+const financialLabel=(text:string)=>/\b(budgets?|costs?|pricing|prices?|rom|quotes?|quotations?|negotiations?|offers?|agreements?|purchase orders?|po status|hourly rate|labour rate|labor rate|mh rate)\b/i.test(text);
 const presets: Omit<ObjectField, 'id'>[] = [
   { label: 'Project name', type: 'text', required: true, projectField: 'title' },
   { label: 'Start date', type: 'date', required: true, projectField: 'startDate' },
