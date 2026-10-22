@@ -6,8 +6,8 @@ const PERMS = [
 ];
 const fullPermissions = () => Object.fromEntries(PERMS.map(k => [k, true]));
 const DEFAULT_PROFILES = [
-  { id:'prof-app-admin', name:'Admin', description:'Application administration without system administrator or role administration access', permissions:{...fullPermissions(),manageRoles:false} },
   { id:'prof-admin', name:'System Administrator', description:'Full application and administration access', permissions:fullPermissions() },
+  { id:'prof-app-admin', name:'Admin', description:'Application administration without system administrator or role administration access', permissions:{...fullPermissions(),manageRoles:false} },
   { id:'prof-senior', name:'Senior Management', description:'Full project, commercial, reporting and audit access', permissions:{
     viewCommercial:true, createCommercial:true, viewCommercialFields:true, viewRFQEngineering:true, createEER:true,
     editProjects:true, deleteProjects:true, createTasks:true, assignTasks:true, updateActualMH:true, raiseEscalations:true,

@@ -338,9 +338,9 @@ const server = http.createServer(async(req,res)=>{ let release;try{
     const pid=u.pathname.split('/').pop(), p=db.profiles.find(x=>x.id===pid); if(!p)return send(res,404,{error:'Profile not found'});
     const b=await body(req), before=structuredClone(p);
     const permissionError=profilePermissionError(b.permissions);if(permissionError)return send(res,400,{error:permissionError});
-    if(DEFAULT_PROFILE_IDS.has(pid) && pid==='prof-admin'){
-      if(Object.hasOwn(b,'name')&&String(b.name).trim()!==p.name)return send(res,400,{error:'System Administrator profile name is protected'});
-      if(b.permissions&&PERMS.some(k=>b.permissions[k]===false))return send(res,400,{error:'System Administrator permissions are protected'});
+    if(['prof-admin','prof-app-admin'].includes(pid)){
+      if(Object.hasOwn(b,'name')&&String(b.name).trim()!==p.name)return send(res,400,{error:'Built-in administrator profile name is protected'});
+      if(b.permissions&&PERMS.some(k=>Object.hasOwn(b.permissions,k)&&b.permissions[k]!==!(pid==='prof-app-admin'&&k==='manageRoles')))return send(res,400,{error:'Built-in administrator permissions are protected'});
     }
     let migratedWorkflow;try{migratedWorkflow=normalizeWorkflowPermissions(db.workflowConfig,db.profiles)}catch(e){return send(res,400,{error:e.message})}
     if(Object.hasOwn(b,'name')){ const nm=String(b.name).trim(); if(!nm)return send(res,400,{error:'Profile name is required'}); if(db.profiles.some(x=>x.id!==pid&&x.name.toLowerCase()===nm.toLowerCase()))return send(res,409,{error:'Profile name already exists'}); p.name=nm; }
