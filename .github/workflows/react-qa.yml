@@ -24,8 +24,8 @@ jobs:
         run: npm --prefix react run lint
       - name: Isolated API smoke tests
         run: npm run test:api
-      - name: Install Chromium for Playwright
-        run: npx playwright install --with-deps chromium
+      - name: Verify runner Chrome
+        run: google-chrome --version
       - name: Isolated browser tests
         run: npm run test:e2e
       - name: Upload Playwright evidence
