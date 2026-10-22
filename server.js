@@ -6,6 +6,7 @@ const { URL } = require('url');
 const WF=require('./workflow-runtime');
 const Register=require('./register-fields');
 const {isResource}=require('./resource-policy');
+const {workToday}=require('./work-date');
 
 const PORT = process.env.PORT || 5174;
 const ROOT = __dirname;
@@ -446,15 +447,16 @@ const server = http.createServer(async(req,res)=>{ let release;try{
     const p=project(db,t.projectId);
     if(!isResource(user)||!ps.updateActualMH||!canReadTask(t,ps,p,db,user)||t.assignee!==user.name||Number(t.level||3)<3)return send(res,403,{error:'Only the assigned team member can log time on an individual task'});
     if(['Completed','Lost/Cancelled','Not Required','No-Go (Client)','No-Go (DOA)','Lost (DOA)'].includes(t.status)||!WF.canUpdateTask(db,p,user,ps,t))return send(res,403,{error:'Reopen completed work or wait for workflow prerequisites before logging time'});
+    let today;try{today=workToday(b.timeZone||'UTC')}catch(e){return send(res,422,{error:e.message})}
     const hours=Number(b.hours), description=String(b.description||'').trim();
-    if(planningDateError(b.date,b.date)||!b.date||b.date>new Date().toISOString().slice(0,10)||!Number.isFinite(hours)||hours<=0||hours>24||!description||description.length>2000)return send(res,422,{error:'Enter a valid date up to today, hours above zero and at most 24, and a description (maximum 2000 characters)'});
+    if(planningDateError(b.date,b.date)||!b.date||b.date>today||!Number.isFinite(hours)||hours<=0||hours>24||!description||description.length>2000)return send(res,422,{error:'Enter a valid date up to today, hours above zero and at most 24, and a description (maximum 2000 characters)'});
     const entryId=String(b.entryId||''); if(!/^[a-zA-Z0-9-]{8,100}$/.test(entryId))return send(res,422,{error:'A unique time entry reference is required'});
     if((t.timeEntries||[]).some(e=>e.id===entryId))return send(res,200,{ok:true,task:safeTask(t,ps,p)});
     const daily=db.tasks.flatMap(t=>t.timeEntries||[]).filter(e=>e.userId===user.id&&e.date===b.date).reduce((sum,e)=>sum+e.hours,0);
     if(daily+hours>24)return send(res,422,{error:'Daily logged time across tasks cannot exceed 24 hours'});
     const opening=t.actualOpeningBalance??Number(t.mhActual||0), actual=Math.round((opening+(t.timeEntries||[]).reduce((sum,e)=>sum+e.hours,0)+hours)*10000)/10000;
     if(actual>Number(t.mhEstimate||0)&&!String(b.overrunReason||t.flagReason||'').trim())return send(res,422,{error:'Actual hours exceed the estimate. An overrun reason is required'});
-    t.actualOpeningBalance=opening; (t.timeEntries||=[]).push({id:entryId,date:b.date,hours,description,userId:user.id,user:user.name,createdAt:now(),revision:1});t.mhActual=actual;
+    t.actualOpeningBalance=opening; (t.timeEntries||=[]).push({id:entryId,date:b.date,hours,description,userId:user.id,user:user.name,createdAt:now(),revision:1,timeZone:b.timeZone||'UTC'});t.mhActual=actual;
     if(actual>Number(t.mhEstimate||0)){t.flag='Escalation';t.flagReason=String(b.overrunReason||t.flagReason).trim();db.escalations.unshift({id:id('e'),taskId:t.id,projectId:p.id,type:t.flag,reason:t.flagReason,user:user.name,ts:now()});notify(db,`Hours exceeded estimate on ${t.wbs}`,['Senior Management','System Administrator']);}
     if(t.workflowNodeId)db.projectWorkflows[p.id].revision++;
     audit(db,user,`Logged ${hours} hours on ${t.wbs}`,{entityType:'task',entityId:t.id,projectId:p.id,workflowNodeId:t.workflowNodeId});write(db);return send(res,201,{ok:true,task:safeTask(t,ps,p)});

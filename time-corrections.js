@@ -1,3 +1,4 @@
+const {workToday}=require('./work-date');
 async function handleTimeCorrections(ctx){
  const {req,res,url,db,user,ps,WF,body,send,project,canReadTask,safeTask,audit,write,id,now,notify}=ctx;
  const match=url.pathname.match(/^\/api\/tasks\/([^/]+)\/time-entries\/([^/]+)$/);
@@ -8,8 +9,8 @@ async function handleTimeCorrections(ctx){
  const lead=ps.assignTasks&&[p.managerId,p.supervisorId].includes(user.id);
  if(!ps.updateActualMH||(entry.userId!==user.id&&!lead&&user.profileId!=='prof-admin')){send(res,403,{error:'Only the entry author, assigned project lead or System Administrator can correct time'});return true;}
  if(['Completed','Lost/Cancelled','Not Required','No-Go (Client)','No-Go (DOA)','Lost (DOA)'].includes(task.status)||!WF.canUpdateTask(db,p,user,ps,task)){send(res,403,{error:'Reopen completed work or wait for workflow prerequisites before correcting time'});return true;}
- const b=await body(req),reason=String(b.reason||'').trim(),description=String(b.description||'').trim();
- if(!/^\d{4}-\d{2}-\d{2}$/.test(b.date||'')||b.date<'1900-01-01'||b.date>'2100-12-31'||!Number.isFinite(Date.parse(b.date))||new Date(b.date).toISOString().slice(0,10)!==b.date||b.date>new Date().toISOString().slice(0,10)||typeof b.hours!=='number'||!Number.isFinite(b.hours)||b.hours<0||b.hours>24||!description||description.length>2000||!reason||reason.length>2000){send(res,422,{error:'Enter a valid work date up to today, 0–24 hours, a description and a correction reason (maximum 2000 characters each)'});return true;}
+ const b=await body(req);let today;try{today=workToday(b.timeZone||'UTC')}catch(e){send(res,422,{error:e.message});return true;}const reason=String(b.reason||'').trim(),description=String(b.description||'').trim();
+ if(!/^\d{4}-\d{2}-\d{2}$/.test(b.date||'')||b.date<'1900-01-01'||b.date>'2100-12-31'||!Number.isFinite(Date.parse(b.date))||new Date(b.date).toISOString().slice(0,10)!==b.date||b.date>today||typeof b.hours!=='number'||!Number.isFinite(b.hours)||b.hours<0||b.hours>24||!description||description.length>2000||!reason||reason.length>2000){send(res,422,{error:'Enter a valid work date up to today, 0–24 hours, a description and a correction reason (maximum 2000 characters each)'});return true;}
  if(!/^[a-zA-Z0-9-]{8,100}$/.test(b.correctionId||'')){send(res,422,{error:'A unique correction reference is required'});return true;}
  const to={date:b.date,hours:b.hours,description},previous=entry.corrections?.find(c=>c.id===b.correctionId);
  if(previous){send(res,JSON.stringify(previous.to)===JSON.stringify(to)&&previous.reason===reason?200:409,{ok:true,task:safeTask(task,ps,p),...(JSON.stringify(previous.to)!==JSON.stringify(to)||previous.reason!==reason?{error:'Correction reference has already been used'}:{})});return true;}
