@@ -79,6 +79,7 @@ function normalize(db){
     if(p.id === 'prof-admin') p.permissions = fullPermissions();
     if(p.id === 'prof-app-admin') p.permissions = {...fullPermissions(),manageRoles:false};
   }
+  for(const p of db.profiles)if(p.id!=='prof-admin')p.permissions.manageRoles=false;
   for(const u of db.users){
     u.id ||= id('u');
     u.username ||= u.name;
@@ -333,6 +334,7 @@ const server = http.createServer(async(req,res)=>{ let release;try{
   if(req.method==='POST'&&u.pathname==='/api/admin/profiles'){
     if(!isSystemAdmin(user))return send(res,403,{error:'System Administrator access required for role management'}); const b=await body(req);
     const permissionError=profilePermissionError(b.permissions);if(permissionError)return send(res,400,{error:permissionError});
+    if(b.permissions?.manageRoles)return send(res,400,{error:'Role management is reserved for System Administrator'});
     if(!String(b.name||'').trim())return send(res,400,{error:'Profile name is required'});
     if(db.profiles.some(p=>p.name.toLowerCase()===String(b.name).trim().toLowerCase()))return send(res,409,{error:'Profile name already exists'});
     const p={id:id('prof'),name:String(b.name).trim(),description:String(b.description||'').trim(),permissions:Object.fromEntries(PERMS.map(k=>[k,!!b.permissions?.[k]]))};
@@ -343,6 +345,7 @@ const server = http.createServer(async(req,res)=>{ let release;try{
     const pid=u.pathname.split('/').pop(), p=db.profiles.find(x=>x.id===pid); if(!p)return send(res,404,{error:'Profile not found'});
     const b=await body(req), before=structuredClone(p);
     const permissionError=profilePermissionError(b.permissions);if(permissionError)return send(res,400,{error:permissionError});
+    if(pid!=='prof-admin'&&b.permissions?.manageRoles)return send(res,400,{error:'Role management is reserved for System Administrator'});
     if(['prof-admin','prof-app-admin'].includes(pid)){
       if(Object.hasOwn(b,'name')&&String(b.name).trim()!==p.name)return send(res,400,{error:'Built-in administrator profile name is protected'});
       if(b.permissions&&PERMS.some(k=>Object.hasOwn(b.permissions,k)&&b.permissions[k]!==!(pid==='prof-app-admin'&&k==='manageRoles')))return send(res,400,{error:'Built-in administrator permissions are protected'});
@@ -441,7 +444,7 @@ const server = http.createServer(async(req,res)=>{ let release;try{
     }
     const validation=taskError(candidate);if(validation)return send(res,422,{error:validation}); if(candidate.assignee!=='Unassigned'&&!db.users.some(u=>u.active&&isResource(u)&&u.name===candidate.assignee))return send(res,422,{error:'Assignee must be an active team member'}); if(before.assignee!==candidate.assignee&&candidate.assignee!=='Unassigned'&&candidate.status==='To Do')candidate.status='Assigned';
     if(Number(candidate.mhActual)>Number(candidate.mhEstimate)&&(!['Escalation','Bottleneck'].includes(candidate.flag)||!String(candidate.flagReason||'').trim()))return send(res,422,{error:'Actual MH exceeds estimate. Select Escalation or Bottleneck and enter a reason.'});
-    const planningOnly=Object.keys(b).every(k=>['assignee','mhEstimate','startDate','dueDate','priority','title','department','plannedAllocations'].includes(k));
+    const planningOnly=Object.keys(b).every(k=>['assignee','mhEstimate','startDate','dueDate','priority','title','department','plannedAllocations','workflowNodeId'].includes(k));
     if(Object.hasOwn(b,'mhActual')&&Number(b.mhActual)!==Number(t.mhActual||0)&&!isResource(user))return send(res,403,{error:'Administration-only accounts cannot record actual hours'});
     if(t.timeEntries?.length && Object.hasOwn(b,'mhActual') && Number(b.mhActual)!==Number(t.mhActual))return send(res,409,{error:'Actual hours are calculated from time entries. Log time instead.'});
     if(t.workflowNodeId&&!WF.canUpdateTask(db,p,user,ps,t)&&!(planningOnly&&WF.canPlanTask(db,p,user,ps,t)))return send(res,403,{error:'Workflow object is locked for execution; only task planning is available'});if(Object.hasOwn(b,'workflowNodeId')){if(!ps.assignTasks)return send(res,403,{error:'Task assignment permission required'});if(b.workflowNodeId){if(Number(t.level)===2)return send(res,422,{error:'Link individual tasks, not work package totals, to workflow objects'});const error=WF.editError(db,p,user,ps,b.workflowNodeId);if(error&&!(['Not Started','To Do','Assigned'].includes(candidate.status)&&!candidate.mhActual&&WF.canPlanTask(db,p,user,ps,{...candidate,workflowNodeId:b.workflowNodeId})))return send(res,403,{error});}candidate.workflowNodeId=b.workflowNodeId||'';}

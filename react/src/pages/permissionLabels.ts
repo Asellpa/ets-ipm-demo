@@ -81,7 +81,7 @@ export const permissionLabels:Record<string,{label:string;help:string}> = {
   },
   "manageRoles": {
     "label": "Manage Roles",
-    "help": "Create and edit permission profiles."
+    "help": "Reserved for the built-in System Administrator profile. It cannot be delegated to a custom role."
   }
 };
 

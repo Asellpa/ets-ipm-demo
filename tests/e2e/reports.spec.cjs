@@ -13,7 +13,7 @@ test('administrator can filter reports and export results',async({page})=>{
  await page.getByRole('dialog',{name:'Project: QA Completed Report Project',exact:true}).waitFor({state:'visible'});await page.getByRole('button',{name:'Close project',exact:true}).click();await page.getByRole('button',{name:'Tasks & Departments'}).click();
  await page.getByRole('button',{name:'+ Add',exact:true}).click();await page.getByRole('button',{name:'New task',exact:true}).click();
  await page.getByLabel('Title').fill('QA Completed Report Task');
- await page.getByLabel('Status').selectOption('Completed');
+ await page.getByLabel('Task workflow object',{exact:true}).selectOption('phase-0');await page.getByLabel('Status').selectOption('Completed');
  await page.getByRole('button',{name:'Save task'}).click();
  await page.getByRole('button',{name:'Reports'}).click();
  await expect(page.getByRole('navigation',{name:'Report views'})).toBeVisible();

@@ -215,7 +215,6 @@ function refresh(instance) {
 }
 function isLead(p, user) {
   return (
-    user.profileId === "prof-admin" ||
     [p.managerId, p.supervisorId].includes(user.id)
   );
 }
