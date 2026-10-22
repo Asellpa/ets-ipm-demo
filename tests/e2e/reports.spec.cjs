@@ -10,7 +10,7 @@ test('administrator can filter reports and export results',async({page})=>{
  await page.getByLabel('Project type').selectOption('internal_eer');
  await page.getByLabel('Record name (optional)').fill('QA Completed Report Project');
  await page.getByRole('button',{name:'Save project'}).click();
- if(await page.getByRole('dialog',{name:/^Project:/}).count())await page.getByRole('button',{name:'Close project',exact:true}).click();await page.getByRole('button',{name:'Tasks & Departments'}).click();
+ await page.getByRole('dialog',{name:'Project: QA Completed Report Project',exact:true}).waitFor({state:'visible'});await page.getByRole('button',{name:'Close project',exact:true}).click();await page.getByRole('button',{name:'Tasks & Departments'}).click();
  await page.getByRole('button',{name:'+ Add',exact:true}).click();await page.getByRole('button',{name:'New task',exact:true}).click();
  await page.getByLabel('Title').fill('QA Completed Report Task');
  await page.getByLabel('Status').selectOption('Completed');
