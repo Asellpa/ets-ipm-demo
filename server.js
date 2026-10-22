@@ -5,6 +5,7 @@ const crypto = require('crypto');
 const { URL } = require('url');
 const WF=require('./workflow-runtime');
 const Register=require('./register-fields');
+const {isResource}=require('./resource-policy');
 
 const PORT = process.env.PORT || 5174;
 const ROOT = __dirname;
@@ -83,7 +84,8 @@ function normalize(db){
     u.userId ||= u.name === 'Stephan' ? '123' : (String(u.id).replace(/\D/g,'') || String(Math.floor(Math.random()*9000+1000)));
     u.email ||= '';
     u.position ||= u.role || '';
-    u.capacity = Number(u.capacity || 8);
+    if(String(u.username||u.name).trim().toLowerCase()==='sysadmin')u.resourceEnabled=false;
+    u.capacity = u.resourceEnabled===false?0:Number(u.capacity??8);
     u.active = u.active !== false;
     u.profileId ||= u.name === 'Stephan' ? 'prof-admin' : u.role === 'LTSE' ? 'prof-ltse' : u.role === 'TSE/JTSE' ? 'prof-tse' : 'prof-senior';
     if(u.name === 'Stephan' && !u.passwordHash) Object.assign(u, hashPassword('Testing','3960cf8e585c51dbae91a9b6f41ee4fc'));
@@ -209,6 +211,8 @@ const server = http.createServer(async(req,res)=>{ let release;try{
     }
   }
 
+  if(await require('./object-attachments').handleAttachments({req,res,url:u,db,user,ps,WF,body,send,canReadTask,project,audit,write,id,now}))return;
+
   if(req.method==='GET'&&u.pathname==='/api/workflow-templates')return send(res,200,{protocolVersion:2,defaultManagerId:ps.assignTasks?user.id:'',workflows:db.workflowConfig.workflows.map(w=>({id:w.id,name:w.name,projectType:w.projectType,description:w.description})),projectTypes:db.workflowConfig.projectTypes,managers:db.users.filter(u=>u.active&&perms(db,u).assignTasks).map(u=>({id:u.id,name:u.name}))});
   if(/^\/api\/projects\/[^/]+\/workflow(?:\/nodes\/[^/]+)?$/.test(u.pathname)){
     const parts=u.pathname.split('/'),p=project(db,parts[3]);if(!p||!canReadTask({},ps,p,db,user))return send(res,404,{error:'Project workflow not found or engineering access is restricted'});
@@ -240,7 +244,7 @@ const server = http.createServer(async(req,res)=>{ let release;try{
     const visibleIds=new Set(visibleProjects.map(p=>p.id));
     const notifications=db.notifications.filter(n=>n.recipients?.includes('All')||n.recipients?.includes(user.name)||n.recipients?.includes(profileOf(db,user)?.name)).filter(n=>!n.workflowNodeId||project(db,n.projectId)&&WF.canRead(db,project(db,n.projectId),user,ps,n.workflowNodeId));
     return send(res,200,{user:user.name,userId:user.userId,profile:profileOf(db,user)?.name,permissions:ps,
-      users:db.users.filter(x=>x.active).map(x=>({id:x.id,name:x.name,position:x.position,capacity:x.capacity,profileId:x.profileId})),
+      users:db.users.filter(x=>x.active).map(x=>({id:x.id,name:x.name,position:x.position,capacity:x.capacity,resourceEnabled:isResource(x),profileId:x.profileId})),
       projectLinks:db.projectLinks.filter(l=>[l.projectId,l.linkedProjectId].every(pid=>visibleIds.has(pid)&&canReadTask({},ps,pmap[pid],db,user))),
       projects:visibleProjects.map(p=>safeProject(p,ps)),workflowSummaries:Object.fromEntries(visibleProjects.filter(p=>canReadTask({},ps,p,db,user)&&db.projectWorkflows[p.id]).map(p=>{const w=WF.view(db,p,user,ps);return [p.id,{name:w.name,completed:w.completed,total:w.total,isComplete:w.isComplete,active:w.nodes.filter(n=>!n.parent&&n.status==='In progress').map(n=>n.name)}]})),
       tasks:db.tasks.filter(t=>visibleIds.has(t.projectId)&&canReadTask(t,ps,pmap[t.projectId],db,user)).map(t=>({...safeTask(t,ps,pmap[t.projectId]),level:taskLevel(t,pmap[t.projectId]),workflowPlanningAllowed:WF.canPlanTask(db,pmap[t.projectId],user,ps,t),workflowLocked:!!t.workflowNodeId&&!WF.canUpdateTask(db,pmap[t.projectId],user,ps,t)})),
@@ -273,7 +277,7 @@ const server = http.createServer(async(req,res)=>{ let release;try{
 
   if(req.method==='GET'&&u.pathname==='/api/admin/users'){
     if(!ps.manageUsers)return send(res,403,{error:'Manage Users permission required'});
-    return send(res,200,{users:db.users.map(x=>({id:x.id,name:x.name,username:x.username,userId:x.userId,email:x.email,position:x.position,capacity:x.capacity,profileId:x.profileId,active:x.active,lastLoginAt:x.lastLoginAt||'',offboardedAt:x.offboardedAt||'',offboardReason:x.offboardReason||''})),profiles:db.profiles.filter(p=>isSystemAdmin(user)||p.id!=='prof-admin').map(p=>({id:p.id,name:p.name}))});
+    return send(res,200,{users:db.users.map(x=>({id:x.id,name:x.name,username:x.username,userId:x.userId,email:x.email,position:x.position,capacity:x.capacity,resourceEnabled:isResource(x),profileId:x.profileId,active:x.active,lastLoginAt:x.lastLoginAt||'',offboardedAt:x.offboardedAt||'',offboardReason:x.offboardReason||''})),profiles:db.profiles.filter(p=>isSystemAdmin(user)||p.id!=='prof-admin').map(p=>({id:p.id,name:p.name}))});
   }
   if(req.method==='POST'&&u.pathname==='/api/admin/users'){
     if(!ps.manageUsers)return send(res,403,{error:'Manage Users permission required'});
@@ -288,7 +292,7 @@ const server = http.createServer(async(req,res)=>{ let release;try{
   if(req.method==='PATCH'&&/^\/api\/admin\/users\/[^/]+$/.test(u.pathname)){
     if(!ps.manageUsers)return send(res,403,{error:'Manage Users permission required'});
     const uid=u.pathname.split('/').pop(), target=db.users.find(x=>x.id===uid); if(!target)return send(res,404,{error:'User not found'});
-    const b=await body(req), before=structuredClone(target);if(protectedUser(user,target,b.profileId))return send(res,403,{error:'Only System Administrators can manage System Administrator accounts'});if(Object.hasOwn(b,'capacity')&&(!Number.isFinite(Number(b.capacity))||Number(b.capacity)<=0||Number(b.capacity)>24))return send(res,422,{error:'Daily capacity must be greater than zero and at most 24'});
+    const b=await body(req), before=structuredClone(target);if(protectedUser(user,target,b.profileId))return send(res,403,{error:'Only System Administrators can manage System Administrator accounts'});if(Object.hasOwn(b,'capacity')&&(!Number.isFinite(Number(b.capacity))||Number(b.capacity)<(isResource(target)?0.01:0)||Number(b.capacity)>24||(!isResource(target)&&Number(b.capacity)!==0)))return send(res,422,{error:'Daily capacity must be greater than zero and at most 24'});
     const nextUsername=Object.hasOwn(b,'username')?String(b.username).trim():target.username, nextUserId=Object.hasOwn(b,'userId')?String(b.userId).trim():target.userId;
     if(!nextUsername||!nextUserId)return send(res,400,{error:'Username and User ID are required'});
     if(uniqueUserConflict(db,uid,nextUsername,nextUserId))return send(res,409,{error:'Username or User ID already exists'});
@@ -387,7 +391,7 @@ const server = http.createServer(async(req,res)=>{ let release;try{
   if(req.method==='DELETE'&&/^\/api\/projects\/[^/]+$/.test(u.pathname)){
     if(!ps.deleteProjects)return send(res,403,{error:'Delete Projects permission required'}); const pid=u.pathname.split('/').pop(), p=project(db,pid); if(!p)return send(res,404,{error:'Project not found'});
     const tids=db.tasks.filter(t=>t.projectId===pid).map(t=>t.id); db.projects=db.projects.filter(x=>x.id!==pid); db.tasks=db.tasks.filter(t=>t.projectId!==pid); db.comments=db.comments.filter(c=>!tids.includes(c.taskId)); db.escalations=db.escalations.filter(e=>!tids.includes(e.taskId));
-    delete db.projectWorkflows[pid];db.projectLinks=db.projectLinks.filter(l=>l.projectId!==pid&&l.linkedProjectId!==pid);
+    db.objectAttachments=(db.objectAttachments||[]).filter(f=>f.projectId!==pid);delete db.projectWorkflows[pid];db.projectLinks=db.projectLinks.filter(l=>l.projectId!==pid&&l.linkedProjectId!==pid);
     audit(db,user,`Deleted project ${p.wbs} and ${tids.length} tasks`,{entityType:'project',entityId:pid,projectId:pid}); write(db); return send(res,200,{ok:true});
   }
 
@@ -395,7 +399,7 @@ const server = http.createServer(async(req,res)=>{ let release;try{
     if(!ps.createTasks)return send(res,403,{error:'Create Tasks permission required'}); const b=await body(req), p=project(db,b.projectId); if(!p)return send(res,404,{error:'Project not found'});
     if(!canReadTask({},ps,p,db,user))return send(res,403,{error:'Project engineering access required'}); const wbs=nextWbs(db,p,p.wbs), t={id:id('wp'),projectId:p.id,wbs,parentWbs:p.wbs,level:2,title:b.title||'Work package',department:b.department||b.title||'Engineering',assignee:ps.assignTasks?(b.assignee||'Unassigned'):'Unassigned',priority:b.priority||'Normal',status:b.status||'In Progress',mhEstimate:Number(b.mhEstimate||0),mhActual:Number(b.mhActual||0),startDate:b.startDate||new Date().toISOString().slice(0,10),dueDate:b.dueDate||'',dependency:'',action:b.action||'',remarks:b.remarks||'',flag:'',flagReason:''};
     if(b.workflowNodeId){if(Number(t.level)===2)return send(res,422,{error:'Link individual tasks, not work package totals, to workflow objects'});const error=WF.editError(db,p,user,ps,b.workflowNodeId);if(error)return send(res,403,{error});t.workflowNodeId=b.workflowNodeId;}
-    const validation=taskError(t);if(validation)return send(res,422,{error:validation});if(t.assignee!=='Unassigned'&&!db.users.some(u=>u.active&&u.name===t.assignee))return send(res,422,{error:'Assignee must be an active team member'});
+    const validation=taskError(t);if(validation)return send(res,422,{error:validation});if(t.assignee!=='Unassigned'&&!db.users.some(u=>u.active&&isResource(u)&&u.name===t.assignee))return send(res,422,{error:'Assignee must be an active team member'});
     db.tasks.push(t);if(t.workflowNodeId)db.projectWorkflows[p.id].revision++; audit(db,user,`Created Level 2 work package ${wbs}`,{entityType:'task',entityId:t.id,workflowNodeId:t.workflowNodeId,projectId:p.id}); write(db); return send(res,201,{ok:true,task:safeTask(t,ps,p)});
   }
   if(req.method==='POST'&&u.pathname==='/api/tasks'){
@@ -403,7 +407,7 @@ const server = http.createServer(async(req,res)=>{ let release;try{
     if(!b.workflowNodeId&&db.projectWorkflows[p.id]?.nodes.some(n=>n.id==='execution'))b.workflowNodeId='execution';
     if(!canReadTask({},ps,p,db,user))return send(res,403,{error:'Project engineering access required'}); const parent=b.parentWbs||p.wbs; if(parent!==p.wbs&&!db.tasks.some(t=>t.projectId===p.id&&t.wbs===parent&&Number(t.level)===2))return send(res,400,{error:'Invalid parent work package'}); const wbs=nextWbs(db,p,parent), t={id:id('t'),projectId:p.id,wbs,parentWbs:parent,level:3,title:b.title||'New task',department:b.department||'Engineering',assignee:ps.assignTasks?(b.assignee||'Unassigned'):'Unassigned',priority:b.priority||'Normal',status:b.assignee&&b.assignee!=='Unassigned'&&(!b.status||b.status==='To Do')?'Assigned':(b.status||'To Do'),mhEstimate:Number(b.mhEstimate||0),mhActual:Number(b.mhActual||0),startDate:b.startDate||new Date().toISOString().slice(0,10),dueDate:b.dueDate||'',dependency:b.dependency||'',action:b.action||'',remarks:b.remarks||'',flag:b.flag||'',flagReason:b.flagReason||''};
     if(b.workflowNodeId){if(Number(t.level)===2)return send(res,422,{error:'Link individual tasks, not work package totals, to workflow objects'});const error=WF.editError(db,p,user,ps,b.workflowNodeId);t.workflowNodeId=b.workflowNodeId;if(error&&!(WF.canPlanTask(db,p,user,ps,t)&&['Not Started','To Do','Assigned'].includes(t.status)&&!t.mhActual))return send(res,403,{error});}
-    const validation=taskError(t);if(validation)return send(res,422,{error:validation}); if(t.assignee!=='Unassigned'&&!db.users.some(u=>u.active&&u.name===t.assignee))return send(res,422,{error:'Assignee must be an active team member'});
+    const validation=taskError(t);if(validation)return send(res,422,{error:validation}); if(t.assignee!=='Unassigned'&&!db.users.some(u=>u.active&&isResource(u)&&u.name===t.assignee))return send(res,422,{error:'Assignee must be an active team member'});
     if(t.mhActual>t.mhEstimate&&(!['Escalation','Bottleneck'].includes(t.flag)||!String(t.flagReason||'').trim()))return send(res,422,{error:'Actual MH exceeds estimate. Select Escalation or Bottleneck and enter a reason.'});
     if(t.flag)db.escalations.unshift({id:id('e'),taskId:t.id,projectId:t.projectId,type:t.flag,reason:t.flagReason,user:user.name,ts:now()}); db.tasks.push(t);if(t.workflowNodeId)db.projectWorkflows[p.id].revision++; audit(db,user,`Created task ${wbs} — ${t.title}`,{entityType:'task',entityId:t.id,workflowNodeId:t.workflowNodeId,projectId:p.id}); if(t.assignee!=='Unassigned')notify(db,`Task ${wbs} assigned to ${t.assignee}`,[t.assignee]); write(db); return send(res,201,{ok:true,task:safeTask(t,ps,p)});
   }
@@ -426,19 +430,21 @@ const server = http.createServer(async(req,res)=>{ let release;try{
         candidate.plannedAllocations=entries;
       }
     }
-    const validation=taskError(candidate);if(validation)return send(res,422,{error:validation}); if(candidate.assignee!=='Unassigned'&&!db.users.some(u=>u.active&&u.name===candidate.assignee))return send(res,422,{error:'Assignee must be an active team member'}); if(before.assignee!==candidate.assignee&&candidate.assignee!=='Unassigned'&&candidate.status==='To Do')candidate.status='Assigned';
+    const validation=taskError(candidate);if(validation)return send(res,422,{error:validation}); if(candidate.assignee!=='Unassigned'&&!db.users.some(u=>u.active&&isResource(u)&&u.name===candidate.assignee))return send(res,422,{error:'Assignee must be an active team member'}); if(before.assignee!==candidate.assignee&&candidate.assignee!=='Unassigned'&&candidate.status==='To Do')candidate.status='Assigned';
     if(Number(candidate.mhActual)>Number(candidate.mhEstimate)&&(!['Escalation','Bottleneck'].includes(candidate.flag)||!String(candidate.flagReason||'').trim()))return send(res,422,{error:'Actual MH exceeds estimate. Select Escalation or Bottleneck and enter a reason.'});
     const planningOnly=Object.keys(b).every(k=>['assignee','mhEstimate','startDate','dueDate','priority','title','department','plannedAllocations'].includes(k));
+    if(Object.hasOwn(b,'mhActual')&&Number(b.mhActual)!==Number(t.mhActual||0)&&!isResource(user))return send(res,403,{error:'Administration-only accounts cannot record actual hours'});
     if(t.timeEntries?.length && Object.hasOwn(b,'mhActual') && Number(b.mhActual)!==Number(t.mhActual))return send(res,409,{error:'Actual hours are calculated from time entries. Log time instead.'});
     if(t.workflowNodeId&&!WF.canUpdateTask(db,p,user,ps,t)&&!(planningOnly&&WF.canPlanTask(db,p,user,ps,t)))return send(res,403,{error:'Workflow object is locked for execution; only task planning is available'});if(Object.hasOwn(b,'workflowNodeId')){if(!ps.assignTasks)return send(res,403,{error:'Task assignment permission required'});if(b.workflowNodeId){if(Number(t.level)===2)return send(res,422,{error:'Link individual tasks, not work package totals, to workflow objects'});const error=WF.editError(db,p,user,ps,b.workflowNodeId);if(error)return send(res,403,{error});}candidate.workflowNodeId=b.workflowNodeId||'';}
     Object.assign(t,candidate);if(t.workflowNodeId||before.workflowNodeId)db.projectWorkflows[p.id].revision++; const changes=diff(before,t,allowed); if(changes.length){ audit(db,user,`Updated task ${t.wbs}: ${changes.map(c=>c.field).join(', ')}`,{entityType:'task',entityId:t.id,workflowNodeId:t.workflowNodeId,projectId:t.projectId,changes}); if(before.assignee!==t.assignee&&t.assignee)notify(db,`Task ${t.wbs} assigned to ${t.assignee}`,[t.assignee]); if(before.flag!==t.flag||before.flagReason!==t.flagReason){ db.escalations.unshift({id:id('e'),taskId:t.id,projectId:t.projectId,type:t.flag,reason:t.flagReason,user:user.name,ts:now()}); if(t.flag)notify(db,`${t.flag} flagged on ${t.wbs}`,['Senior Management','System Administrator']); } }
     write(db); return send(res,200,{ok:true,task:safeTask(t,ps,p)});
   }
+  if(await require('./time-corrections').handleTimeCorrections({req,res,url:u,db,user,ps,WF,body,send,project,canReadTask,safeTask,audit,write,id,now,notify}))return;
   if(req.method==='POST'&&/^\/api\/tasks\/[^/]+\/time-entries$/.test(u.pathname)) {
     const t=db.tasks.find(t=>t.id===u.pathname.split('/')[3]), b=await body(req);
     if(!t)return send(res,404,{error:'Task not found'});
     const p=project(db,t.projectId);
-    if(!ps.updateActualMH||!canReadTask(t,ps,p,db,user)||t.assignee!==user.name||Number(t.level||3)<3)return send(res,403,{error:'Only the assigned team member can log time on an individual task'});
+    if(!isResource(user)||!ps.updateActualMH||!canReadTask(t,ps,p,db,user)||t.assignee!==user.name||Number(t.level||3)<3)return send(res,403,{error:'Only the assigned team member can log time on an individual task'});
     if(['Completed','Lost/Cancelled','Not Required','No-Go (Client)','No-Go (DOA)','Lost (DOA)'].includes(t.status)||!WF.canUpdateTask(db,p,user,ps,t))return send(res,403,{error:'Reopen completed work or wait for workflow prerequisites before logging time'});
     const hours=Number(b.hours), description=String(b.description||'').trim();
     if(planningDateError(b.date,b.date)||!b.date||b.date>new Date().toISOString().slice(0,10)||!Number.isFinite(hours)||hours<=0||hours>24||!description||description.length>2000)return send(res,422,{error:'Enter a valid date up to today, hours above zero and at most 24, and a description (maximum 2000 characters)'});
@@ -448,7 +454,7 @@ const server = http.createServer(async(req,res)=>{ let release;try{
     if(daily+hours>24)return send(res,422,{error:'Daily logged time across tasks cannot exceed 24 hours'});
     const opening=t.actualOpeningBalance??Number(t.mhActual||0), actual=Math.round((opening+(t.timeEntries||[]).reduce((sum,e)=>sum+e.hours,0)+hours)*10000)/10000;
     if(actual>Number(t.mhEstimate||0)&&!String(b.overrunReason||t.flagReason||'').trim())return send(res,422,{error:'Actual hours exceed the estimate. An overrun reason is required'});
-    t.actualOpeningBalance=opening; (t.timeEntries||=[]).push({id:entryId,date:b.date,hours,description,userId:user.id,user:user.name,createdAt:now()});t.mhActual=actual;
+    t.actualOpeningBalance=opening; (t.timeEntries||=[]).push({id:entryId,date:b.date,hours,description,userId:user.id,user:user.name,createdAt:now(),revision:1});t.mhActual=actual;
     if(actual>Number(t.mhEstimate||0)){t.flag='Escalation';t.flagReason=String(b.overrunReason||t.flagReason).trim();db.escalations.unshift({id:id('e'),taskId:t.id,projectId:p.id,type:t.flag,reason:t.flagReason,user:user.name,ts:now()});notify(db,`Hours exceeded estimate on ${t.wbs}`,['Senior Management','System Administrator']);}
     if(t.workflowNodeId)db.projectWorkflows[p.id].revision++;
     audit(db,user,`Logged ${hours} hours on ${t.wbs}`,{entityType:'task',entityId:t.id,projectId:p.id,workflowNodeId:t.workflowNodeId});write(db);return send(res,201,{ok:true,task:safeTask(t,ps,p)});
@@ -468,12 +474,12 @@ const server = http.createServer(async(req,res)=>{ let release;try{
     const start=u.searchParams.get('start')||new Date().toISOString().slice(0,10), days=Math.min(90,Math.max(1,Number(u.searchParams.get('days')||14))), standard=Number(db.settings.standardHoursPerDay||8);
     if(!validDate(start)||!Number.isFinite(days))return send(res,400,{error:'Invalid capacity date or day count'});
     const dates=[]; let d=new Date(`${start}T00:00:00Z`); for(let i=0;i<days;i++){dates.push(d.toISOString().slice(0,10));d.setUTCDate(d.getUTCDate()+1);}
-    const rows=db.users.filter(x=>x.active).map(person=>{ const booked={},allocations={}; for(const t of db.tasks.filter(t=>t.assignee===person.name&&Number(t.level||3)>=3&&!['Completed','Lost/Cancelled','Not Required','No-Go (Client)','No-Go (DOA)','Lost (DOA)'].includes(t.status)&&canReadTask(t,ps,project(db,t.projectId),db,user))){ const spread=t.plannedAllocations||spreadHours(t.startDate,Number(t.mhEstimate||0),standard,t.dueDate); for(const [dt,h] of Object.entries(spread)){booked[dt]=(booked[dt]||0)+h;(allocations[dt]||=[]).push({taskId:t.id,hours:h});} } const cells=dates.map(date=>{ const leave=db.leave.find(l=>l.user===person.name&&l.date===date); const weekend=[0,6].includes(new Date(`${date}T00:00:00Z`).getUTCDay()); const cap=weekend||leave?0:Number(person.capacity||standard); const used=Number(booked[date]||0); return {date,booked:used,capacity:cap,free:Math.max(0,cap-used),leave:leave?.type||'',allocations:allocations[date]||[]}; }); return {user:person.name,position:person.position,capacity:Number(person.capacity||standard),cells}; });
+    const rows=db.users.filter(u=>u.active&&isResource(u)).map(person=>{ const booked={},allocations={}; for(const t of db.tasks.filter(t=>t.assignee===person.name&&Number(t.level||3)>=3&&!['Completed','Lost/Cancelled','Not Required','No-Go (Client)','No-Go (DOA)','Lost (DOA)'].includes(t.status)&&canReadTask(t,ps,project(db,t.projectId),db,user))){ const spread=t.plannedAllocations||spreadHours(t.startDate,Number(t.mhEstimate||0),standard,t.dueDate); for(const [dt,h] of Object.entries(spread)){booked[dt]=(booked[dt]||0)+h;(allocations[dt]||=[]).push({taskId:t.id,hours:h});} } const cells=dates.map(date=>{ const leave=db.leave.find(l=>l.user===person.name&&l.date===date); const weekend=[0,6].includes(new Date(`${date}T00:00:00Z`).getUTCDay()); const cap=weekend||leave?0:Number(person.capacity||standard); const used=Number(booked[date]||0); return {date,booked:used,capacity:cap,free:Math.max(0,cap-used),leave:leave?.type||'',allocations:allocations[date]||[]}; }); return {user:person.name,position:person.position,capacity:Number(person.capacity||standard),cells}; });
     return send(res,200,{start,days,rows});
   }
   if(req.method==='POST'&&u.pathname==='/api/leave'){
     if(!ps.manageLeave)return send(res,403,{error:'Manage Leave permission required'}); const b=await body(req); if(!b.user||!b.date)return send(res,400,{error:'User and date are required'});
-    if(!b.date||planningDateError(b.date,'')||!db.users.some(u=>u.active&&u.name===b.user))return send(res,422,{error:'An active team member and a valid date between 1900 and 2100 are required'}); if(db.leave.some(l=>l.user===b.user&&l.date===b.date))return send(res,409,{error:'Leave already recorded for this day'});
+    if(!b.date||planningDateError(b.date,'')||!db.users.some(u=>u.active&&isResource(u)&&u.name===b.user))return send(res,422,{error:'An active team member and a valid date between 1900 and 2100 are required'}); if(db.leave.some(l=>l.user===b.user&&l.date===b.date))return send(res,409,{error:'Leave already recorded for this day'});
     const l={id:id('l'),user:b.user,date:b.date,type:b.type||'Leave',note:b.note||''}; db.leave.push(l); audit(db,user,`Marked ${l.type} for ${l.user} on ${l.date}`,{entityType:'leave',entityId:l.id}); write(db); return send(res,201,{ok:true,id:l.id});
   }
   if(req.method==='DELETE'&&/^\/api\/leave\/[^/]+$/.test(u.pathname)){
@@ -488,7 +494,7 @@ const server = http.createServer(async(req,res)=>{ let release;try{
     if(uniqueUserConflict(db,null,nu.username,nu.userId))return send(res,409,{error:'Username or User ID already exists'}); db.users.push(nu); audit(db,user,`Added team member ${nu.name}`,{entityType:'user',entityId:nu.id}); write(db); return send(res,201,{ok:true,id:nu.id});
   }
   if(req.method==='PATCH'&&/^\/api\/users\/[^/]+$/.test(u.pathname)){
-    if(!ps.manageTeam)return send(res,403,{error:'Manage Team permission required'}); const uid=u.pathname.split('/').pop(), target=db.users.find(x=>x.id===uid); if(!target)return send(res,404,{error:'User not found'}); const b=await body(req),before=structuredClone(target);if(Object.hasOwn(b,'capacity')&&(!Number.isFinite(Number(b.capacity))||Number(b.capacity)<=0||Number(b.capacity)>24))return send(res,422,{error:'Daily capacity must be greater than zero and at most 24'});
+    if(!ps.manageTeam)return send(res,403,{error:'Manage Team permission required'}); const uid=u.pathname.split('/').pop(), target=db.users.find(x=>x.id===uid); if(!target)return send(res,404,{error:'User not found'}); const b=await body(req),before=structuredClone(target);if(Object.hasOwn(b,'capacity')&&(!Number.isFinite(Number(b.capacity))||Number(b.capacity)<(isResource(target)?0.01:0)||Number(b.capacity)>24||(!isResource(target)&&Number(b.capacity)!==0)))return send(res,422,{error:'Daily capacity must be greater than zero and at most 24'});
     if(protectedUser(user,target))return send(res,403,{error:'Only System Administrators can manage System Administrator accounts'});
     if(target.id===user.id&&b.active===false)return send(res,400,{error:'You cannot deactivate your own account'});
     if(isSystemAdmin(target)&&b.active===false&&db.users.filter(x=>x.active&&isSystemAdmin(x)).length<=1)return send(res,400,{error:'At least one active System Administrator must remain'});
@@ -530,7 +536,7 @@ const server = http.createServer(async(req,res)=>{ let release;try{
     if(!ps.exportData)return send(res,403,{error:'Export permission required'});
     const projects=db.projects.filter(p=>p.type!=='commercial'||ps.viewCommercial), ids=new Set(projects.map(p=>p.id));
     const tasks=db.tasks.filter(t=>ids.has(t.projectId)&&canReadTask(t,ps,project(db,t.projectId),db,user)), tids=new Set(tasks.map(t=>t.id));
-    return send(res,200,{projects:projects.map(p=>safeProject(p,ps)),tasks:tasks.map(t=>safeTask(t,ps,project(db,t.projectId))),comments:db.comments.filter(c=>tids.has(c.taskId)),escalations:ps.viewReports?db.escalations.filter(e=>tids.has(e.taskId)):[],leave:ps.manageLeave?db.leave:[],audit:ps.viewAudit?db.audit.filter(a=>workflowAuditVisible(db,a,user,ps)).map(a=>safeAudit(a,ps)):[],workflows:projects.filter(p=>canReadTask({},ps,p,db,user)).map(p=>({projectId:p.id,workflow:WF.view(db,p,user,ps)})),users:db.users.map(({id,name,position,capacity,active})=>({id,name,position,capacity,active}))},'application/json',{'Content-Disposition':'attachment; filename="ets-ipm-data.json"'});
+    return send(res,200,{projects:projects.map(p=>safeProject(p,ps)),tasks:tasks.map(t=>safeTask(t,ps,project(db,t.projectId))),comments:db.comments.filter(c=>tids.has(c.taskId)),escalations:ps.viewReports?db.escalations.filter(e=>tids.has(e.taskId)):[],leave:ps.manageLeave?db.leave:[],audit:ps.viewAudit?db.audit.filter(a=>workflowAuditVisible(db,a,user,ps)).map(a=>safeAudit(a,ps)):[],workflows:projects.filter(p=>canReadTask({},ps,p,db,user)).map(p=>({projectId:p.id,workflow:WF.view(db,p,user,ps)})),attachments:(db.objectAttachments||[]).filter(f=>projects.some(p=>p.id===f.projectId&&canReadTask({},ps,p,db,user)&&WF.canRead(db,p,user,ps,f.nodeId))),users:db.users.map(({id,name,position,capacity,active})=>({id,name,position,capacity,active}))},'application/json',{'Content-Disposition':'attachment; filename="ets-ipm-data.json"'});
   }
   if(req.method==='GET'&&u.pathname==='/api/export.csv'){
     if(!ps.exportData)return send(res,403,{error:'Export permission required'}); const pmap=Object.fromEntries(db.projects.map(p=>[p.id,p])),head=['WBS','Project','Client','Type','Stage','Task','Assignee','Status','MH Estimate','MH Actual','Flag'],lines=[head.map(csv).join(',')];
@@ -538,7 +544,7 @@ const server = http.createServer(async(req,res)=>{ let release;try{
     return send(res,200,lines.join('\n'),'text/csv',{'Content-Disposition':'attachment; filename="ETS_Work_Tracker_export.csv"'});
   }
   if(req.method==='GET'&&u.pathname.startsWith('/api/reports/')){
-    if(!ps.viewReports)return send(res,403,{error:'View Reports permission required'}); let lines;
+    if(!ps.viewReports||!ps.exportData)return send(res,403,{error:'View Reports and Export Data permissions required'}); let lines;
     if(u.pathname.endsWith('mh.csv'))lines=[['WBS','Task','Estimate','Actual','Variance'].map(csv).join(','),...db.tasks.filter(t=>Number(t.level||3)>=3&&canReadTask(t,ps,project(db,t.projectId),db,user)).map(t=>[t.wbs,t.title,t.mhEstimate,t.mhActual,Number(t.mhActual||0)-Number(t.mhEstimate||0)].map(csv).join(','))];
     else if(u.pathname.endsWith('escalations.csv'))lines=[['Timestamp','Task','Type','User','Reason'].map(csv).join(','),...db.escalations.filter(e=>canReadTask(db.tasks.find(t=>t.id===e.taskId),ps,project(db,e.projectId),db,user)).map(e=>{const t=db.tasks.find(x=>x.id===e.taskId);return[e.ts,t?.wbs||e.taskId,e.type,e.user,e.reason].map(csv).join(',')})];
     else{const counts={};db.tasks.filter(t=>Number(t.level||3)>=3&&canReadTask(t,ps,project(db,t.projectId),db,user)).forEach(t=>counts[t.status]=(counts[t.status]||0)+1);lines=['Status,Count',...Object.entries(counts).map(([s,c])=>`${csv(s)},${c}`)];}

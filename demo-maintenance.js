@@ -2,7 +2,7 @@ const crypto=require('node:crypto');
 const {DEFAULT_PROFILES}=require('./auth-profiles');
 function clearProjects(db){
   // Keep users, configuration, feedback, leave and existing audit history.
-  for(const key of ['projects','tasks','comments','escalations','projectLinks','importHistory'])db[key]=[];
+  for(const key of ['projects','tasks','comments','escalations','projectLinks','importHistory','objectAttachments'])db[key]=[];
   db.projectWorkflows={};
   // Legacy notifications are free text and cannot reliably be detached from deleted work.
   db.notifications=[];
@@ -24,7 +24,7 @@ function prepareDemo(db,password){
   const salt=crypto.randomBytes(16).toString('hex'),hash=crypto.scryptSync(password,salt,64).toString('hex');
   if(!crypto.timingSafeEqual(Buffer.from(hash,'hex'),crypto.scryptSync(password,salt,64)))throw Error('Password verification failed');
   const at=new Date().toISOString();
-  db.users.push({id:'u-'+crypto.randomUUID(),name:'Sysadmin',username:'sysadmin',userId:'1309',profileId:'prof-admin',active:true,capacity:8,position:'System Administrator',email:'',passwordSalt:salt,passwordHash:hash,createdAt:at});
+  db.users.push({id:'u-'+crypto.randomUUID(),name:'Sysadmin',username:'sysadmin',userId:'1309',profileId:'prof-admin',active:true,resourceEnabled:false,capacity:0,position:'System Administrator',email:'',passwordSalt:salt,passwordHash:hash,createdAt:at});
   stephans[0].profileId='prof-app-admin';
   const removed=(db.projects||[]).length;
   clearProjects(db);

@@ -1,5 +1,6 @@
 import {taskStatuses} from '../project-utils';
 import TimeLog from '../components/TimeLog';
+import ObjectAttachments from '../components/ObjectAttachments';
 import { Fragment, useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
 import { request, type Project, type Session, type Task } from '../api';
 import type { ObjectField } from './WorkflowFieldsEditor';
@@ -43,6 +44,7 @@ type Instance = {
 };
 function TaskRow({
   task,
+  data,
   canAssign,
   canUpdate,
   canLog,
@@ -50,6 +52,7 @@ function TaskRow({
   onSaved,
 }: {
   task: Task;
+  data: Session;
   canAssign: boolean;
   canUpdate: boolean;
   canLog: boolean;
@@ -124,7 +127,7 @@ function TaskRow({
           {error} Use Tasks &amp; Work Packages to record any required overrun flag and reason.
         </p>
       )}
-    </form>{canLog && !task.workflowLocked && !['Completed','Lost/Cancelled'].includes(task.status||'') && <TimeLog task={task} onSaved={onSaved}/>}</>
+    </form>{(canLog||!!task.timeEntries?.length)&&<TimeLog task={task} data={data} canLog={canLog} onSaved={onSaved}/>}</>
   );
 }
 function ObjectDetails({
@@ -341,8 +344,9 @@ function ObjectDetails({
           <TaskRow
             key={task.id + ':' + task.status + ':' + task.mhActual}
             task={task}
+            data={data}
             parentBusy={busy}
-            canLog={task.assignee === data.user && !!data.permissions.updateActualMH && !busy}
+            canLog={data.users.find(u=>u.name===data.user)?.resourceEnabled!==false && task.assignee === data.user && !!data.permissions.updateActualMH && !busy}
             canAssign={node.canEdit && !!data.permissions.assignTasks}
             canUpdate={
               !task.workflowLocked &&
@@ -377,7 +381,7 @@ function ObjectDetails({
                 onChange={(e) => setAssignee(e.target.value)}
               >
                 <option>Unassigned</option>
-                {data.users.map((u) => (
+                {data.users.filter(u=>u.resourceEnabled!==false).map((u) => (
                   <option key={u.id}>{u.name}</option>
                 ))}
               </select>
@@ -490,6 +494,7 @@ function ObjectDetails({
           {error}
         </p>
       )}
+      <ObjectAttachments key={project.id+node.id} projectId={project.id} nodeId={node.id} canEdit={node.canEdit&&!busy} onChanged={onChange}/>
       {node.history?.length > 0 && (
         <details className="object-history">
           <summary>Object history ({node.history.length})</summary>

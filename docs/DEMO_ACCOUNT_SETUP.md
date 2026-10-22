@@ -16,3 +16,7 @@ Setup removes all Projects and Internal register records, child departments/task
 A completion marker makes repeated setup runs leave later projects and accounts unchanged. It does not reset the password on subsequent runs. The script stops if the username/ID already exists without that marker, if Stephan is ambiguous, or if the backend is running. `ETS_DATA_DIR` and `PORT` are respected when used.
 
 Pulling code alone does not modify the laptop's database. This local setup step must complete before the forwarded demo reflects the cleaned register and new accounts.
+
+## Administration account capacity
+
+The dedicated sysadmin account has no manhour capacity. Normalisation sets its capacity to zero and keeps it out of resource planning and task/leave assignment. Named administrators who also do engineering work retain their own resource capacity. Pulling this update and restarting is sufficient; do not rerun the one-time setup to apply the resource fix.

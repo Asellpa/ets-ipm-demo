@@ -1,6 +1,6 @@
 # ETS IPM demo — pending work tracker
 
-Updated: 20 October 2026. Branch: `react-migration`. Owner: unassigned unless noted.
+Updated: 23 October 2026. Branch: `react-migration`. Owner: unassigned unless noted.
 
 This is the current engineering backlog, not a declaration of complete FRD compliance. Keep IDs when updating status. Record acceptance evidence or a linked issue before marking a row Done. P0 blocks production; P1 is next-priority work; P2 is an improvement or decision.
 
@@ -81,3 +81,15 @@ Supersedes the earlier Commercial tracker template design. The catalogue is migr
 Implemented compact Kanban, native project popup with full-window expansion, department task creation and inline status/owner/priority, count-based task progress with explicit exclusions, administrator register visibility/editability, and permission-filtered Internal↔Project links. WBS means Work Breakdown Structure, with project/department/task levels. Source files remain reference material rather than live data imports.
 
 Pending owner acceptance and any requested import of real tracker rows. Attachments, time-entry corrections/approvals and production hosting/security remain separate backlog items. Internal tracker-specific form adaptation remains pending; its existing workflow content is retained.
+
+## Demo readiness sprint — 23 October 2026
+
+Implemented and locally verified with production build, ESLint and nine API regression suites (including `tests/sprint-demo.test.cjs`). Browser coverage is added in `tests/e2e/sprint-demo.spec.cjs`; CI results must be recorded after completion before claiming full browser acceptance.
+
+- RES-02: Dedicated `sysadmin` accounts are administration-only: persisted zero capacity, no task allocation/time logging/leave entries, and excluded from Team, capacity and assignment pickers. This is account purpose, independent of the System Administrator permission profile, so named administrators can still be working team members. Existing historical entries are retained.
+- ATT-01: Workflow-object file upload/list/download/removal with inherited read/edit checks, locked-object enforcement, authenticated downloads, size/type/filename validation, audit entries and workflow revision updates. Supports PDF/PNG/JPG/TXT/CSV, 2 MB per file, 20 files per object and 20 MB per project. Files persist in the backend JSON database, are included only in authorised explicit JSON exports, and are removed with project cleanup. They are not disclosed through bootstrap. Office documents, malware scanning and external object storage remain pending.
+- TIME-02: Time-entry corrections and voiding (zero hours) preserve original values, reason, actor/time and versioned correction history. Entry authors, named project leads and System Administrators may correct unlocked work. Stale revisions and reused correction references are rejected; identical retries are idempotent. Daily 24-hour limits and opening balances remain enforced; task/workflow/report actuals recalculate. Formal timesheet approval is still pending.
+- REPORT-02: Reports → Time entries provides dated work records, author/date filtering, corrections and CSV export; undated opening balances are explicitly excluded. Progress and overdue calculations now share cancellation/inapplicability rules across project views, personal work, overview and reports. CSV report endpoints require Export Data in addition to View Reports.
+- ACCOUNT-02: Previous one-time setup creates sysadmin / ID 1309 via hidden local password prompts, backs up and clears project work, and gives Stephan Admin. No password or credential hash is committed. This sprint requires pull/restart only; it does not rerun cleanup or delete newly created work.
+
+Still pending: complete FRD/user acceptance, native Excel import, Internal-specific template adaptation, conditional branching, formal time approval, automatic rescheduling/versioned plans, feedback email integration, independent hosting and production database/security/operations work. No production deployment, database migration, real customer import or further live-data reset is part of this sprint.
