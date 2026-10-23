@@ -249,7 +249,7 @@ function ObjectDetails({
           {new Date(node.notificationSentAt).toLocaleString()}.
         </p>
       )}
-      {node.requiresSignoff && (
+      {node.requiresSignoff && !node.signedOffBy && (
         <p className="permission-note">
           Sign-off: assigned project manager or supervisor, after required work is complete.
         </p>
@@ -349,7 +349,7 @@ function ObjectDetails({
           </ul>
         </div>
       )}
-      {node.status === 'Completed' && (
+      {node.status === 'Completed' && !node.signedOffBy && (
         <p>
           Completed by {node.completedBy}{' '}
           {node.completedAt ? 'on ' + new Date(node.completedAt).toLocaleString() : ''}.
