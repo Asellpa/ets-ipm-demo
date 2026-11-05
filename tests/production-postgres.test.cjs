@@ -36,6 +36,7 @@ test('PostgreSQL-backed API persists authorised writes and revokes local session
  const read=()=>fetch('http://127.0.0.1:5194/api/bootstrap',{headers:{cookie}});assert.equal((await read()).status,200);await stop();await start();assert.equal((await read()).status,200);
  assert.equal((await fetch('http://127.0.0.1:5194/api/logout',{method:'POST',headers:{cookie},body:'{}'})).status,200);assert.equal((await read()).status,401);await stop();await start();assert.equal((await read()).status,401);await stop();await start('proxy');
  const headers={'x-ipm-proxy-secret':'x'.repeat(32),'x-forwarded-email':seed.users[0].email};
+ const assetRoot=path.join(__dirname,'../react/dist/assets'),font=fs.readdirSync(assetRoot).find(f=>f.endsWith('.woff2'));assert.ok(font,'Production build contains self-hosted font assets');const fontResponse=await fetch('http://127.0.0.1:5194/assets/'+font);assert.equal(fontResponse.status,200);assert.equal(fontResponse.headers.get('content-type'),'font/woff2');
  assert.equal((await fetch('http://127.0.0.1:5194/api/bootstrap',{headers:{'x-forwarded-email':seed.users[0].email}})).status,401);
  assert.equal((await fetch('http://127.0.0.1:5194/api/bootstrap',{headers})).status,200);
  assert.equal((await fetch('http://127.0.0.1:5194/api/login',{method:'POST',headers,body:'{}'})).status,405);

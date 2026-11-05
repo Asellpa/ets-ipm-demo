@@ -1,0 +1,129 @@
+/* Shared typography contract: family, size, weight and text spacing live here. */
+:root {
+  --app-font: 'Inter Variable', system-ui, sans-serif;
+  --text-caption: .75rem;       /* 12px: metadata and supporting text */
+  --text-label: .8125rem;      /* 13px: field labels and table headings */
+  --text-body: .875rem;        /* 14px: reading, tables and controls */
+  --text-subheading: 1rem;     /* 16px */
+  --text-section: 1.125rem;    /* 18px */
+  --text-dialog: 1.25rem;      /* 20px */
+  --text-title: 1.5rem;        /* 24px */
+  --text-metric: 1.75rem;      /* 28px: numeric summaries only */
+  --leading-body: 1.5;
+  --leading-heading: 1.25;
+  --weight-regular: 400;
+  --weight-medium: 500;
+  --weight-semibold: 600;
+  --weight-bold: 700;
+  --control-height: 2.5rem;
+  font-family: var(--app-font);
+  font-synthesis: none;
+}
+body {
+  font-family: var(--app-font);
+  font-size: var(--text-body);
+  font-weight: var(--weight-regular);
+  line-height: var(--leading-body);
+}
+button, input, select, textarea, option, optgroup, input::file-selector-button {
+  font: inherit;
+  font-family: var(--app-font);
+  font-size: var(--text-body);
+  line-height: var(--leading-body);
+}
+button, .button, summary, th, legend, label, dt { font-weight: var(--weight-semibold); }
+input, select, textarea, option, optgroup { font-weight: var(--weight-regular); }
+input::placeholder, textarea::placeholder { font: inherit; opacity: 1; }
+code, pre, kbd, samp { font-family: inherit; font-size: inherit; }
+strong, b { font-weight: var(--weight-semibold); }
+h1, h2, h3, h4, h5, h6 {
+  font-family: inherit;
+  font-weight: var(--weight-bold);
+  line-height: var(--leading-heading);
+  overflow-wrap: anywhere;
+}
+h1 { font-size: var(--text-title); }
+h2 { font-size: var(--text-section); }
+h3 { font-size: var(--text-subheading); }
+h4, h5, h6 { font-size: var(--text-body); }
+label, legend, thead th { font-size: var(--text-label); }
+small { font-size: var(--text-caption); font-weight: var(--weight-regular); }
+p, li, dd, td { line-height: var(--leading-body); }
+table { font-size: var(--text-body); }
+summary { font-size: var(--text-body); line-height: var(--leading-body); }
+/* Controls keep the same size even inside small metadata or a dense table. */
+.editor input, .editor select, .editor textarea, .project-popup input,
+.project-popup select, .project-popup textarea, .permission-matrix select,
+.designer-properties input, .designer-properties select, .designer-properties textarea {
+  font-size: var(--text-body);
+  font-weight: var(--weight-regular);
+}
+/* Supporting information is consistently 12px; never shrink it further on mobile. */
+.muted, .field-help, .identity, .permission-note, .role-permission small,
+.report-scope, .report-subtext, .report-section-heading p, .report-attention small,
+.report-calm p, .report-empty p, .report-tool-grid p, .report-pagination,
+.report-metrics article>span, .capacity-explanation, .capacity-legend,
+.capacity-board th small, .capacity-cell small, .leave-record small,
+.resource-assignment small, .notification-dialog .toolbar small,
+.notification-list time, .notification-list small, .workflow-permission-note,
+.workflow-permission-help, .workflow-access-status, .workflow-access-section>summary span,
+.about-section-title>span, .about-footnote, .about-stage-note,
+.project-summary dt, .project-object-list small, .project-task-row small,
+.project-cell-secondary, .project-kanban-card small, .project-popup-header small,
+.project-popup-meta, .department-panel small, .task-progress>div,
+.task-progress strong, .workflow-version, .object-history p,
+.permission-matrix small, .permission-save>span, .checklist-progress,
+.add-work-options>button span, .canvas-hint, .designer-palette p,
+.node-select small, .designer-properties .permission-row, .workflow-badge,
+.stage-pills em, .tone-badge, .report-pill, .report-flag, .object-status,
+.project-status-tag, .priority, .kanban-legend, .compact .project-kanban-card code {
+  font-size: var(--text-caption);
+  line-height: var(--leading-body);
+}
+/* Reading content uses body text instead of browser defaults or nested small sizes. */
+.about-faq details>p, .user-guide ol, .user-guide li, .help-about,
+.feedback-text, .notification-list p, .workflow-card p, .profile-card p,
+.report-intro p, .department-task, .project-kanban-card p,
+.checklist-preview, .object-blockers, .project-comment, .report-status-bars>div,
+.report-count, .capacity-board, .capacity-board tbody th, .report-drilldown {
+  font-size: var(--text-body);
+  line-height: var(--leading-body);
+}
+.card-title .project-title-link, .node-select strong { font-size: var(--text-body); }
+.tone-select, .tone-badge, .report-pill, .priority, .flag,
+.checklist-item:has(input:checked)>span { font-weight: var(--weight-semibold); }
+.checklist-item { font-size: var(--text-body); font-weight: var(--weight-regular); }
+.role-permission, .permission-group legend { font-size: var(--text-label); }
+.department-task strong { font-weight: var(--weight-medium); }
+/* Preserve the hierarchy: page > dialog > section > subsection. */
+.main h1, .report-intro h2 { font-size: var(--text-title); }
+.panel h2, .resource-workspace .panel h2, .report-section-heading h2,
+.about-summary h2, .about-section-title h2, .daily-checklist-heading h2 { font-size: var(--text-section); }
+.workflow-card h3, .profile-card h3, .designer-properties h3, .feedback-dialog h3,
+.report-tool-grid h3, .report-empty h3, .department-panel h3,
+.project-action-panel h3, .checklists-embedded h3, .project-kanban-column>h2 { font-size: var(--text-subheading); }
+.stat strong, .report-metrics article>strong {
+  font-size: var(--text-metric);
+  font-weight: var(--weight-bold);
+  line-height: var(--leading-heading);
+  font-variant-numeric: tabular-nums;
+}
+.report-metrics article em { font-size: var(--text-body); font-weight: var(--weight-regular); }
+.brand { font-size: var(--text-title); font-weight: var(--weight-bold); letter-spacing: .04em; }
+.brand span { font-weight: var(--weight-regular); }
+.sidebar nav small, .report-eyebrow, .designer-palette>small {
+  font-size: var(--text-caption);
+  font-weight: var(--weight-semibold);
+  letter-spacing: .08em;
+}
+.notification-badge { font-size: var(--text-caption); font-weight: var(--weight-semibold); line-height: 1.5; }
+.capacity-cell strong, .report-attention strong { font-size: var(--text-body); }
+.about-faq summary>span, .empty-check, .node-add { font-size: var(--text-section); }
+.report-empty>span { font-size: var(--text-metric); }
+button[aria-label^='Close'], .notification-dialog .toolbar>button { font-size: var(--text-section); }
+.profile-dialog h2, .project-popup-header h2, .notification-dialog h2 { font-size: var(--text-dialog); }
+/* Rem-based controls and wrapping preserve readable labels when text is enlarged. */
+.main>header, .identity { flex-wrap: wrap; gap: .75rem; }
+.sidebar nav button, .profile-card h3, .checklist-item>span { overflow-wrap: anywhere; }
+.notification-badge { min-width: 1.125rem; height: auto; min-height: 1.125rem; }
+.canvas-node .node-select { gap: .25rem; }

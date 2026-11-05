@@ -126,7 +126,7 @@ function project(db,pid){ return db.projects.find(p=>p.id===pid); }
 function taskLevel(t,p){ if(t.level) return Number(t.level); const rest=String(t.wbs||'').replace(String(p?.wbs||''),'').replace(/^\./,''); return rest?rest.split('.').length+1:1; }
 function nextWbs(db,p,parent){ parent=String(parent||p.wbs); const depth=parent.split('.').length+1; const nums=db.tasks.filter(t=>t.projectId===p.id&&String(t.wbs).startsWith(parent+'.')&&String(t.wbs).split('.').length===depth).map(t=>Number(String(t.wbs).split('.').pop())).filter(Number.isFinite); return `${parent}.${(nums.length?Math.max(...nums):0)+1}`; }
 function diff(a,b,fields){ return fields.filter(k=>JSON.stringify(a[k]??'')!==JSON.stringify(b[k]??'')).map(k=>({field:k,from:a[k]??'',to:b[k]??''})); }
-function mime(p){ return p.endsWith('.css')?'text/css':p.endsWith('.js')?'application/javascript':p.endsWith('.html')?'text/html':'application/octet-stream'; }
+function mime(p){ return p.endsWith('.woff2')?'font/woff2':p.endsWith('.woff')?'font/woff':p.endsWith('.css')?'text/css':p.endsWith('.js')?'application/javascript':p.endsWith('.html')?'text/html':'application/octet-stream'; }
 function csv(v){if(typeof v==='string'&&/^[=+@\t\r-]/.test(v))v="'"+v; return `"${String(v??'').replaceAll('"','""')}"`; }
 function spreadHours(startDate,total,max=8,dueDate='') {
   const result={}; if(!startDate || !Number(total)) return result;
