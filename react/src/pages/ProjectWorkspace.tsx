@@ -1,3 +1,4 @@
+import ToneSelect from '../components/ToneSelect';
 import {taskStatuses} from '../project-utils';
 import TimeLog from '../components/TimeLog';
 import ObjectAttachments from '../components/ObjectAttachments';
@@ -46,7 +47,7 @@ type Instance = {
 function TaskRow({task,data,canUpdate,canLog,parentBusy,onSaved}:{task:Task;data:Session;canUpdate:boolean;canLog:boolean;parentBusy:boolean;onSaved:()=>Promise<void>}){
  const [busy,setBusy]=useState(false);const[error,setError]=useState('');
  async function setStatus(status:string){setBusy(true);setError('');try{await request('/tasks/'+encodeURIComponent(task.id),{method:'PATCH',body:JSON.stringify({status})});await onSaved()}catch(e){setError((e as Error).message)}finally{setBusy(false)}}
- return <div className="linked-task"><div className="project-task-row"><div><strong>{task.title}</strong><small>{task.assignee} · {task.mhEstimate||0} estimated hours</small></div><label>Status<select aria-label={'Status for '+task.title} disabled={!canUpdate||busy||parentBusy} value={task.status||'To Do'} onChange={e=>void setStatus(e.target.value)}>{[...new Set([...taskStatuses,task.status||'To Do'])].map(status=><option key={status}>{status}</option>)}</select></label></div>{error&&<p className="error" role="alert">{error}</p>}{(canLog||!!task.timeEntries?.length)&&<TimeLog task={task} data={data} canLog={canLog} onSaved={onSaved}/>}</div>;
+ return <div className="linked-task"><div className="project-task-row"><div><strong>{task.title}</strong><small>{task.assignee} · {task.mhEstimate||0} estimated hours</small></div><label>Status<ToneSelect kind={'status'} aria-label={'Status for '+task.title} disabled={!canUpdate||busy||parentBusy} value={task.status||'To Do'} onChange={e=>void setStatus(e.target.value)}>{[...new Set([...taskStatuses,task.status||'To Do'])].map(status=><option key={status}>{status}</option>)}</ToneSelect></label></div>{error&&<p className="error" role="alert">{error}</p>}{(canLog||!!task.timeEntries?.length)&&<TimeLog task={task} data={data} canLog={canLog} onSaved={onSaved}/>}</div>;
 }
 function ObjectDetails({
   node,
@@ -200,7 +201,7 @@ function ObjectDetails({
                   }
                 />
               ) : field.type === 'select' ? (
-                <select
+                <ToneSelect kind={field.projectField==='priority'?'priority':/status/i.test(field.label)?'status':undefined}
                   aria-label={field.label}
                   disabled={!node.canEdit || field.canEdit===false || busy}
                   value={values[field.id] || ''}
@@ -212,7 +213,7 @@ function ObjectDetails({
                   {field.options?.map((option) => (
                     <option key={option}>{option}</option>
                   ))}
-                </select>
+                </ToneSelect>
               ) : field.type === 'checkbox' ? (
                 <input
                   aria-label={field.label}

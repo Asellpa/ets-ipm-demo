@@ -1,0 +1,9 @@
+import {Children,cloneElement,isValidElement,type CSSProperties,type ReactNode,type SelectHTMLAttributes} from 'react';
+import {statusTone} from '../project-utils';
+type Kind='status'|'priority';
+const palette:Record<string,{backgroundColor:string;color:string}>={red:{backgroundColor:'#fff0f2',color:'#9c2638'},yellow:{backgroundColor:'#fff7dd',color:'#805600'},green:{backgroundColor:'#eaf7ed',color:'#1b683a'},teal:{backgroundColor:'#e4f6f5',color:'#096870'},purple:{backgroundColor:'#f1eafa',color:'#674398'},blue:{backgroundColor:'#edf3fa',color:'#315986'},neutral:{backgroundColor:'#f1f4f7',color:'#475569'}};
+export function optionTone(value:string,kind:Kind='status'){if(kind==='priority')return /^high$/i.test(value)?'red':/^low$/i.test(value)?'green':/^normal$/i.test(value)?'blue':'neutral';return !value||['all','Not Required','Draft','TBD'].includes(value)?'neutral':statusTone(value);}
+export function ToneBadge({value,kind='status'}:{value:string;kind?:Kind}){return <span className="tone-badge" data-tone={optionTone(value,kind)} style={palette[optionTone(value,kind)]}>{value||'—'}</span>}
+export default function ToneSelect({kind,children,className='',value,...props}:SelectHTMLAttributes<HTMLSelectElement>&{kind?:Kind}){
+ const current=String(value??'');return <select {...props} value={value} className={(kind?'tone-select ':'')+className} data-tone={kind?optionTone(current,kind):undefined} style={kind?{...palette[optionTone(current,kind)],...props.style}:props.style}>{kind?Children.map(children,child=>{if(!isValidElement<{value?:string|number;children?:ReactNode;style?:CSSProperties}>(child)||child.type!=='option')return child;const option=String(child.props.value??child.props.children??'');return cloneElement(child,{style:{...palette[optionTone(option,kind)],...child.props.style}})}):children}</select>;
+}

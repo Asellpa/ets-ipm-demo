@@ -1,8 +1,0 @@
-node_modules/
-data/db.json
-.DS_Store
-playwright-report/
-test-results/
-
-data/*.backup-*
-data/*.setup-*
