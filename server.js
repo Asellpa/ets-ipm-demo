@@ -255,7 +255,7 @@ async function handle(req,res){ let release;try{
     const visibleProjects=db.projects.filter(p=>p.type!=='commercial'||ps.viewCommercial);
     const visibleIds=new Set(visibleProjects.map(p=>p.id));
     const notifications=db.notifications.filter(n=>n.recipients?.includes('All')||n.recipients?.includes(user.name)||n.recipients?.includes(profileOf(db,user)?.name)).filter(n=>!n.workflowNodeId||project(db,n.projectId)&&WF.canRead(db,project(db,n.projectId),user,ps,n.workflowNodeId));
-    return send(res,200,{user:user.name,userId:user.userId,profile:profileOf(db,user)?.name,permissions:ps,clients:require('./clients').options(db,ps),
+    return send(res,200,{authMode:process.env.AUTH_MODE==='proxy'?'proxy':'local',user:user.name,userId:user.userId,profile:profileOf(db,user)?.name,permissions:ps,clients:require('./clients').options(db,ps),
       users:db.users.filter(x=>x.active).map(x=>({id:x.id,name:x.name,position:x.position,capacity:x.capacity,resourceEnabled:isResource(x),profileId:x.profileId})),
       projectLinks:db.projectLinks.filter(l=>[l.projectId,l.linkedProjectId].every(pid=>visibleIds.has(pid)&&canReadTask({},ps,pmap[pid],db,user))),
       projects:visibleProjects.map(p=>safeProject(p,ps,db,user)),workflowSummaries:Object.fromEntries(visibleProjects.filter(p=>canReadTask({},ps,p,db,user)&&db.projectWorkflows[p.id]).map(p=>{const w=WF.view(db,p,user,ps);return [p.id,{name:w.name,completed:w.completed,total:w.total,isComplete:w.isComplete,active:w.nodes.filter(n=>!n.parent&&n.status==='In progress').map(n=>n.name)}]})),
