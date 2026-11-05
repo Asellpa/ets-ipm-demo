@@ -1,0 +1,31 @@
+const{test}=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),os=require('node:os'),path=require('node:path'),{spawn}=require('node:child_process');
+test('client records link by stable ID, aggregate only visible leaf hours, archive safely; checklists enforce role, owner, snapshot and revision',async()=>{
+ const root=path.resolve(__dirname,'..'),dir=fs.mkdtempSync(path.join(os.tmpdir(),'ipm-client-shift-')),port=59000+Math.floor(Math.random()*500);fs.copyFileSync(path.join(root,'data/seed.json'),path.join(dir,'seed.json'));const server=spawn(process.execPath,[path.join(root,'server.js')],{env:{...process.env,PORT:String(port),ETS_DATA_DIR:dir},stdio:'ignore'});
+ try{for(let i=0;i<70;i++){try{await fetch('http://127.0.0.1:'+port);break}catch{await new Promise(r=>setTimeout(r,100))}}
+ const call=async(cookie,route,method='GET',body)=>{const r=await fetch('http://127.0.0.1:'+port+'/api'+route,{method,headers:{Cookie:cookie||'','Content-Type':'application/json'},body:body===undefined?undefined:JSON.stringify(body)});return{status:r.status,data:await r.json(),cookie:r.headers.get('set-cookie')?.split(';')[0]}};
+ const login=async(user,id='123',password='Testing')=>(await call('','/login','POST',{user,id,password})).cookie,admin=await login('Stephan');
+ let client=(await call(admin,'/clients','POST',{name:'QA Client',contact:'QA Contact',email:'qa@example.test'})).data.client;assert.ok(client.id);assert.equal((await call(admin,'/clients','POST',{name:'qa client'})).status,409);assert.equal((await call(admin,'/clients','POST',{name:{bad:true}})).status,422);
+ const p=(await call(admin,'/projects','POST',{type:'commercial',workflowId:'commercial',title:'Linked client project',client:client.name})).data.project;assert.equal(p.clientId,client.id);
+ await call(admin,'/tasks','POST',{projectId:p.id,workflowNodeId:'overview',title:'QA leaf',mhEstimate:4,mhActual:2});
+ const legacy=(await call(admin,'/projects','POST',{type:'commercial',workflowId:'commercial',title:'Legacy link candidate',client:'Existing legacy client'})).data.project;const legacyClient=(await call(admin,'/clients','POST',{name:'Existing legacy client'})).data.client;assert.equal((await call(admin,'/clients/'+legacyClient.id+'/link-project','POST',{projectId:legacy.id})).status,200);assert.equal((await call(admin,'/clients/'+legacyClient.id+'/link-project','POST',{projectId:legacy.id})).status,409);
+ let detail=(await call(admin,'/clients/'+client.id)).data.clients[0];assert.equal(detail.actualHours,2);assert.equal(detail.estimatedHours,4);assert.equal(detail.projectCount,1);
+ const role=(await call(admin,'/admin/profiles','POST',{name:'QA client reader',permissions:{viewClients:true}})).data.id;await call(admin,'/admin/users','POST',{name:'QA staff',username:'qa-staff',userId:'qa-staff',password:'Testing',profileId:role});const staff=await login('qa-staff','qa-staff');
+ assert.equal((await call(staff,'/clients','POST',{name:'Forbidden'})).status,403);detail=(await call(staff,'/clients/'+client.id)).data.clients[0];assert.equal(detail.projectCount,0);assert.equal(detail.actualHours,0);
+ assert.equal((await call(admin,'/clients/'+client.id,'PATCH',{name:'Renamed',expectedRevision:0})).status,409);
+ client=(await call(admin,'/clients/'+client.id,'PATCH',{name:'QA Renamed',active:false,expectedRevision:client.revision})).data.client;assert.equal(client.id,p.clientId);assert.equal((await call(admin,'/bootstrap')).data.clients.some(c=>c.id===client.id),false);assert.equal((await call(admin,'/clients/'+client.id)).data.clients[0].projectCount,1);
+ let config=(await call(admin,'/checklists')).data;assert.ok(config.templates.length>=8);assert.ok(config.templates.every(t=>t.roleIds.length===1));assert.equal((await call(staff,'/checklists/templates','POST',{})).status,403);
+ const templatePayload={name:'QA start',shift:'morning',roleIds:[role],active:true,items:[{text:'Required QA item',required:true},{text:'Optional QA item',required:false}]};
+ const template=(await call(admin,'/checklists/templates','POST',templatePayload)).data.template;assert.ok(template.id);
+ let run=(await call(staff,'/checklists/runs','POST',{templateId:template.id})).data.run;assert.equal((await call(staff,'/checklists/runs','POST',{templateId:template.id})).data.run.id,run.id);
+ assert.equal((await call(admin,'/checklists/runs/'+run.id,'PATCH',{action:'submit',expectedRevision:run.revision,answers:{'item-0':true},notes:''})).status,404,'Review permission cannot complete another user’s shift');
+ assert.equal((await call(staff,'/checklists/runs/'+run.id,'PATCH',{action:'submit',expectedRevision:run.revision,answers:{},notes:''})).status,422);
+ assert.equal((await call(staff,'/checklists/runs/'+run.id,'PATCH',{action:'save',expectedRevision:0,answers:{},notes:''})).status,409);
+ run=(await call(staff,'/checklists/runs/'+run.id,'PATCH',{action:'submit',expectedRevision:run.revision,answers:{'item-0':true},notes:'QA handover'})).data.run;assert.equal(run.status,'Submitted');assert.ok(run.submittedAt);
+ assert.equal((await call(staff,'/checklists/runs/'+run.id,'PATCH',{action:'save',expectedRevision:run.revision,answers:{},notes:''})).status,409);
+ const revised=await call(admin,'/checklists/templates/'+template.id,'PATCH',{...templatePayload,items:[{text:'Revised future item',required:true}],expectedRevision:template.revision});assert.equal(revised.status,200);
+ const historical=(await call(staff,'/checklists')).data.history.find(r=>r.id===run.id);assert.equal(historical.items[0].text,'Required QA item');
+ run=(await call(staff,'/checklists/runs/'+run.id,'PATCH',{action:'reopen',expectedRevision:run.revision,reason:'Correcting handover'})).data.run;assert.equal(run.status,'Draft');assert.equal(run.history.at(-1).answers['item-0'],true);
+ assert.equal((await call(staff,'/checklists')).data.history.every(r=>r.userId===run.userId),true);
+ assert.equal((await call(admin,'/checklists?timeZone=Invalid/Zone')).status,422);
+ }finally{if(server.exitCode===null){server.kill();await new Promise(r=>server.once('exit',r))}fs.rmSync(dir,{recursive:true,force:true})}
+});

@@ -37,11 +37,13 @@ export default function ProjectEditor({
   canCommercial,
   canEer,
   canViewCommercialFields,
+  clients=[],
   onSaved,
   onCancel,
   onConfigure,
 }: {
   users: {id:string;name:string}[];
+  clients?:{id:string;name:string}[];
   project?: Project;
   initialType?: string;
   canCommercial: boolean;
@@ -265,7 +267,7 @@ export default function ProjectEditor({
           {fields.map((field) => (
             <label key={field.key}>
               {field.label}
-              {field.key === 'owner' ? (<select value={values.owner||''} onChange={e=>set('owner',e.target.value)}><option value="">Unassigned</option>{values.owner&&!users.some(u=>u.name===values.owner)&&<option disabled value={values.owner}>{values.owner} (unavailable)</option>}{users.map(u=><option key={u.id} value={u.name}>{u.name}</option>)}</select>) : field.kind === 'textarea' ? (
+              {field.key === 'client'&&type==='commercial' ? <select value={values.client||''} onChange={e=>set('client',e.target.value)}><option value="">Select client…</option>{values.client&&!clients.some(c=>c.name===values.client)&&<option disabled value={values.client}>{values.client} (saved name)</option>}{clients.map(c=><option key={c.id}>{c.name}</option>)}</select> : field.key === 'owner' ? (<select value={values.owner||''} onChange={e=>set('owner',e.target.value)}><option value="">Unassigned</option>{values.owner&&!users.some(u=>u.name===values.owner)&&<option disabled value={values.owner}>{values.owner} (unavailable)</option>}{users.map(u=><option key={u.id} value={u.name}>{u.name}</option>)}</select>) : field.kind === 'textarea' ? (
                 <textarea
                   value={values[field.key] || ''}
                   onChange={(e) => set(field.key, e.target.value)}

@@ -1,4 +1,8 @@
 export const permissionLabels:Record<string,{label:string;help:string}> = {
+viewClients:{label:"View Client Profiles",help:"Read client contacts and linked projects. Project and field permissions still filter linked work and hours."},
+manageClients:{label:"Manage Client Profiles",help:"Create, edit and archive clients. Requires View Client Profiles."},
+manageChecklists:{label:"Manage Shift Checklists",help:"Create and edit role-based start/end-of-shift templates. Existing checklist records retain their saved version."},
+reviewChecklists:{label:"Review Shift Checklists",help:"Read submitted and draft checklists for all staff; cannot complete another person’s checklist."},
   "viewCommercial": {
     "label": "View Projects",
     "help": "See Project cards and RFQs."
@@ -21,7 +25,7 @@ export const permissionLabels:Record<string,{label:string;help:string}> = {
   },
   "editProjects": {
     "label": "Edit Projects",
-    "help": "Change project record details. Workflow object editing and named-lead sign-off have separate checks."
+    "help": "Edit register-level project details, subject to field rules and locks. Workflow object forms use the Objects & sign-off matrix; neither grants task assignment, pricing access or named-lead authority."
   },
   "deleteProjects": {
     "label": "Delete Projects",

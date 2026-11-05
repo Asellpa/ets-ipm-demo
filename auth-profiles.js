@@ -1,4 +1,5 @@
 const PERMS = [
+  'viewClients','manageClients','manageChecklists','reviewChecklists',
   'viewCommercial','createCommercial','viewCommercialFields','viewRFQEngineering','createEER',
   'editProjects','deleteProjects','createTasks','assignTasks','updateActualMH','raiseEscalations',
   'viewCapacity','manageLeave','viewReports','exportData','importData','viewAudit','manageTeam',
@@ -9,6 +10,7 @@ const DEFAULT_PROFILES = [
   { id:'prof-admin', name:'System Administrator', description:'Full application and administration access', permissions:fullPermissions() },
   { id:'prof-app-admin', name:'Admin', description:'Application administration without system administrator or role administration access', permissions:{...fullPermissions(),manageRoles:false} },
   { id:'prof-senior', name:'Senior Management', description:'Full project, commercial, reporting and audit access', permissions:{
+    viewClients:true,manageClients:true,manageChecklists:true,reviewChecklists:true,
     viewCommercial:true, createCommercial:true, viewCommercialFields:true, viewRFQEngineering:true, createEER:true,
     editProjects:true, deleteProjects:true, createTasks:true, assignTasks:true, updateActualMH:true, raiseEscalations:true,
     viewCapacity:true, manageLeave:true, viewReports:true, exportData:true, importData:true, viewAudit:true, manageTeam:true,

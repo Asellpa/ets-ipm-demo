@@ -146,3 +146,14 @@ td{vertical-align:middle}td>button+button{margin-left:6px}
 /* Keep row actions together; table panels provide horizontal scrolling on small screens. */
 td:last-child:has(>button){white-space:nowrap}
 .resource-controls{align-items:flex-end}
+
+.tabs button[aria-pressed=true],.tabs button[aria-selected=true],.tabs button.selected{background:#183f68;color:white;border-color:#183f68;box-shadow:inset 0 -3px 0 #0da5a8}
+.tabs button[aria-pressed=true]:hover,.tabs button.selected:hover{background:#245580}
+.permission-matrix select{border:1px solid #bac9d9;border-radius:6px;background:white;padding:8px;color:#244055}
+.permission-matrix tbody th,.permission-matrix tbody td{scroll-margin-top:80px}
+.project-register-scroll input,.project-register-scroll select{border:1px solid #bac9d9;border-radius:6px;background:white;color:#244055}
+
+.client-contact{display:grid;grid-template-columns:100px minmax(0,1fr);gap:10px}.client-contact dd{margin:0;overflow-wrap:anywhere}
+.checklist-run>label{display:block;margin:16px 0}.checklist-run textarea{display:block;width:100%;margin-top:6px}
+.checklist-item{display:flex!important;align-items:flex-start;gap:12px;padding:10px 0;border-bottom:1px solid #e0e8ee}.checklist-item input{margin-top:3px;flex-shrink:0}.checklist-history{padding:14px 0;border-bottom:1px solid #e0e8ee}.checklist-history summary{cursor:pointer;line-height:1.6}
+.report-navigation button[aria-current=page],.report-presets button[aria-pressed=true]{background:#183f68;color:white;border-color:#183f68;box-shadow:inset 0 -3px 0 #0da5a8}
