@@ -1,0 +1,203 @@
+[
+  {
+    "id": "start",
+    "title": "Find your way around",
+    "category": "Getting started",
+    "summary": "Choose the area for the work you need to do.",
+    "steps": [
+      "Sign in using the method provided by your administrator. Company sign-in uses your organisation’s identity account; local environments use a username, user ID and password.",
+      "Use My Work for your assigned tasks and daily shift checklists. Use Project Register to find and open projects; Grid and Kanban show the same records.",
+      "Open a project by selecting its title in Grid or anywhere on its Kanban card. Use Expand in the project window for more space.",
+      "Use the notification bell for unread notices. Use Send feedback to report a problem, including the steps and expected result. Never include passwords or confidential documents in feedback screenshots.",
+      "If an area or action is missing, ask your administrator to check your role and the project’s access rules. Team membership alone does not grant access."
+    ]
+  },
+  {
+    "id": "checklists",
+    "title": "Complete your daily checklist",
+    "category": "Daily work",
+    "summary": "Readiness and handover checks belong to you and the displayed work date.",
+    "steps": [
+      "Open My Work. Daily shift checklists appears beside tasks on a wide screen and below them on smaller screens. Only templates assigned to your role appear.",
+      "Check the displayed date and time zone, then select Start checklist for the relevant start-of-shift or end-of-day template.",
+      "Tick completed items, add handover notes if needed, and choose Save draft before leaving. A tick is not saved until you save or submit.",
+      "Finish all required items, then choose Submit checklist. Optional items may remain unchecked. Submitted records become read-only.",
+      "Use Shift Checklists → My history to review previous records. Reopening today’s submitted record requires a reason; it retains history. Template edits do not change existing records.",
+      "Checklist completion does not log hours, complete project tasks or sign off a project. Reviewers can review staff records but cannot submit on their behalf."
+    ]
+  },
+  {
+    "id": "tasks",
+    "title": "Update assigned tasks",
+    "category": "Daily work",
+    "summary": "Keep execution status and actual work current.",
+    "steps": [
+      "Open My Work, find your task and choose Details. Confirm the project, workflow object and assignee before changing it.",
+      "Update task status using an available task control or Edit, according to your permissions. Save the change and confirm it appears after refresh.",
+      "Execution may be blocked until preceding workflow objects are complete. Future work can be planned by an authorised lead, but it cannot be executed early.",
+      "Complete the task only when its work is finished. Task completion is separate from object completion and project sign-off.",
+      "Flag an escalation or bottleneck with a clear reason when work is blocked. Ask the project manager or supervisor if a locked object needs reopening."
+    ]
+  },
+  {
+    "id": "time",
+    "title": "Log and correct working hours",
+    "category": "Daily work",
+    "summary": "Record dated time against your own assigned task.",
+    "steps": [
+      "Open task Details → Time log, or the linked task’s time log inside a project object.",
+      "Enter the work date, hours and a useful description, then choose Log time. Only the assignee with Update Actual MH access can log dated time against active work.",
+      "Future dates and combined totals above 24 hours per person/day are rejected. Logging above the task estimate requires an overrun reason.",
+      "To correct an entry, select Correct entry and provide a reason. Original values remain in history. Setting hours to zero voids the entry. Completed work must be reopened by an authorised lead first.",
+      "Reports → Time entries shows dated records and permitted exports. Historical opening balances are separate from dated entries. A formal timesheet approval process is not provided."
+    ]
+  },
+  {
+    "id": "clients",
+    "title": "Create and link clients",
+    "category": "Projects",
+    "summary": "Use a reusable client profile instead of repeatedly typing names.",
+    "steps": [
+      "With Manage Clients permission, open Clients and create the client profile and contact information. Check for an existing profile before adding another.",
+      "In the project’s configured client field or editable register column, select the client from the list and save.",
+      "Client summaries show linked projects and permitted task-hour totals. They respect project, object, field and financial access; totals can differ between roles.",
+      "Archive an unused client instead of removing its history. Existing links remain. Older text-only client values must be explicitly linked; matching text is not automatically a relationship."
+    ]
+  },
+  {
+    "id": "create-project",
+    "title": "Create a project",
+    "category": "Projects",
+    "summary": "A saved workflow must exist before a project can be created.",
+    "steps": [
+      "In Project Register choose New project. Select Projects or Internal and an existing workflow. Ask an administrator to configure the workflow first if none is suitable.",
+      "Enter the project title and select an eligible named project manager or supervisor. Administration-only Sysadmin accounts cannot be project leads.",
+      "Create the record, then open it. Select the first visible workflow object and fill its configured fields. Choose Save object fields before leaving.",
+      "The left pane follows the project’s saved workflow order. Existing projects preserve their workflow version when a template changes.",
+      "Project owner and responsibility fields identify people; the named manager/supervisor controls sign-off authority. These are separate responsibilities.",
+      "Use Linked projects to relate an Internal project and a Projects record. A link does not combine their tasks, hours, workflows or access."
+    ]
+  },
+  {
+    "id": "departments",
+    "title": "Add departments and tasks",
+    "category": "Projects",
+    "summary": "Departments group tasks; workflow objects control progression.",
+    "steps": [
+      "Open the object configured with the Departments & tasks workspace. New projects do not receive automatic department placeholders.",
+      "Choose Add department, select a standard option or enter a custom name, and save. Then add the department’s tasks with an active resource assignee, estimate and dates.",
+      "Use the available Add control to choose the relevant record type. A department/work package groups work; a task records executable work and dated time.",
+      "When removing a department, choose where its tasks should move: another department or Ungrouped tasks. Task IDs, recorded time and history are retained.",
+      "Tasks & Departments provides a cross-project view. Ensure each task is linked to the intended saved workflow object."
+    ]
+  },
+  {
+    "id": "attachments",
+    "title": "Attach and protect documents",
+    "category": "Projects",
+    "summary": "Files inherit project/object access and may have additional commercial restrictions.",
+    "steps": [
+      "Open the project and select its workflow object. Under Attachments, choose a file, select the appropriate visibility and choose Upload attachment.",
+      "Supported types are PDF, PNG, JPG, TXT and CSV, up to 2 MB per file. Limits are 20 files per object and 20 MB per project. Closing the file chooser without selecting a file should leave the project open.",
+      "Use Restricted commercial for budgets, pricing and financial documents, especially files with generic names. Follow object permissions does not mean only the users in a Team members field.",
+      "Production uploads must pass malware scanning. If scanning is unavailable or a file is rejected, the upload is not accepted; contact your administrator rather than changing the extension.",
+      "Downloads require access to the project, object and any financial restrictions. Uploads/removal also require appropriate edit access and an unlocked object. Removing a link does not define the backup retention policy."
+    ]
+  },
+  {
+    "id": "signoff",
+    "title": "Complete objects and sign off a project",
+    "category": "Projects",
+    "summary": "Project completion requires an explicit decision by a named project lead.",
+    "steps": [
+      "Complete applicable tasks and child objects. Fill and save required fields in the parent object.",
+      "The assigned project manager or supervisor completes ordinary objects with Complete access. Parent and approval objects also require Approve access and a workflow comment.",
+      "Select Sign off parent when the object is ready. If blocked, review the displayed prerequisites, required fields, children and linked tasks. System Administrator access alone does not replace the named lead.",
+      "When all required workflow objects and applicable tasks are complete, open Project Action, enter a project sign-off comment and choose Sign off project.",
+      "The application records the signatory, time and comment and marks the project Completed. These are recorded application decisions, not cryptographic digital signatures.",
+      "Reopening requires a reason and appropriate access. It can reopen dependent workflow objects and withdraw final project sign-off; historical task/time records remain."
+    ]
+  },
+  {
+    "id": "resources",
+    "title": "Plan resources and read progress",
+    "category": "Planning & reporting",
+    "summary": "Compare scheduled work with available capacity.",
+    "steps": [
+      "Open Resource Planning → Workload to review assigned, unassigned and future tasks. Task leads can set the assignee, estimate, start and due dates.",
+      "Default allocations spread estimated hours across weekdays in the date range. Custom daily allocations must total the estimate and remain within its dates.",
+      "Recorded leave and weekend bookings appear as conflicts. The application does not automatically reschedule work around leave.",
+      "Project task progress counts completed applicable tasks divided by all applicable tasks. Cancelled, No-Go and Not Required tasks are excluded. No applicable tasks shows 0%, not automatic completion.",
+      "Estimated/actual hours are separate from count-based progress; workflow sign-off is also separate. The dedicated Sysadmin account has no resource capacity or time allocation."
+    ]
+  },
+  {
+    "id": "reports",
+    "title": "Use reports and exports",
+    "category": "Planning & reporting",
+    "summary": "Reports follow the access available to your account.",
+    "steps": [
+      "Open Reports and choose the relevant report and filters. Time entries shows dated work records; undated opening balances are excluded from that report.",
+      "View Reports grants report access. Export Data is additionally required for report CSV downloads.",
+      "Exports retain project/object/field and financial restrictions. Never treat an ordinary JSON export as a full operational backup: it is permission-filtered and does not contain all system configuration.",
+      "CSV tracker import provides preview and row validation. Native Excel import is not supported; prepare and check a CSV copy instead. Ask an administrator before importing operational records."
+    ]
+  },
+  {
+    "id": "workflow",
+    "title": "Configure workflows and forms",
+    "category": "Administration",
+    "summary": "Define the project structure before users create records.",
+    "steps": [
+      "Open Project Settings → Workflows → Open Designer. Add parents and children; use Move earlier / Move later to set sibling order.",
+      "Choose Configured fields, Departments & tasks or Dates & hours for the object workspace. Add field labels, types, required flags and relevant register mappings.",
+      "Use database-backed user/team selectors for responsibility fields. These fields record responsibility without granting permissions.",
+      "Sequential objects wait for the preceding sibling group. Parallel with previous sibling joins that group; the next group waits for every member. Children and required sign-off still apply.",
+      "Save the workflow before creating a project. Structural edits apply to new project snapshots; they do not rearrange existing projects.",
+      "Configure role access under Project Settings → Field permissions, not in the workflow designer."
+    ]
+  },
+  {
+    "id": "permissions",
+    "title": "Manage access and register fields",
+    "category": "Administration",
+    "summary": "Application permissions, object rules and field rules are cumulative restrictions.",
+    "steps": [
+      "Assign existing role profiles under Manage Users. Only System Administrator can manage role profiles. Admin can administer permitted areas without acquiring the protected role-management capability.",
+      "Role Management controls application capabilities such as creating projects, assigning tasks, reports and commercial-data access.",
+      "Project Settings → Field permissions → Objects & sign-off controls Hidden, View, Edit, Complete and Approve. Unspecified access inherits from the ancestor; a hidden ancestor hides descendants.",
+      "The Fields matrix controls Inherit, Hidden, View and Edit. A field rule cannot expand object access, bypass workflow locks, grant financial access or replace a named lead.",
+      "Saving template policies applies to new projects. The explicit existing-project option updates matching access rules without replacing structure, values or sign-offs. Review the affected records before choosing it.",
+      "Register configuration controls column visibility/editability and project-type tab order. Showing a column does not grant access to its data.",
+      "Financial protection remains separate. Team/owner fields do not grant extra access, pricing visibility or sign-off authority. Test sensitive changes with representative accounts."
+    ]
+  },
+  {
+    "id": "users-checklists",
+    "title": "Manage users and checklist templates",
+    "category": "Administration",
+    "summary": "Maintain named accounts and role-specific daily checks.",
+    "steps": [
+      "Use Manage Users to create named accounts and assign the least-privileged suitable profile. In company sign-in environments, each active account needs a unique email matching the identity provider.",
+      "Offboard users when they leave. Company identity administrators must also revoke their identity sessions/access. Retain historical work attribution.",
+      "Keep the dedicated Sysadmin account for administration. Named working administrators can have resource capacity; the dedicated account cannot receive tasks or log time.",
+      "Open Shift Checklists → Templates to create/edit a template, choose Start of shift or End of day, select assigned roles and add individual items.",
+      "Mark required items, remove unwanted rows and save the active template. Paste item list is available for bulk entry; “? ” marks an optional item.",
+      "Template changes affect future runs. Assign System Administrator explicitly if that account should receive a checklist; it has no default operational template. Staff review is read-only and does not permit submitting for another user."
+    ]
+  },
+  {
+    "id": "help",
+    "title": "Resolve common problems",
+    "category": "Help",
+    "summary": "Check saved state before retrying a change.",
+    "steps": [
+      "If a save fails or the connection drops, reopen the record and check whether the change was saved before retrying. Include the page, approximate time and steps in feedback.",
+      "For a blocked sign-off, check the named manager/supervisor, Approve access, required fields, child objects and applicable tasks. Save fields before signing off.",
+      "For missing data/actions, ask the administrator to check your application profile and the saved project’s object/field policies. A register column setting is not an access grant.",
+      "If no checklist appears, confirm an active template is assigned to your current role and check the displayed date. Existing runs retain their original items.",
+      "If you cannot sign in or the whole application is unavailable, contact your company’s support channel. In-app feedback requires a working signed-in session.",
+      "Notifications are in-app; email delivery is not provided. Status/priority colours supplement labels: yellow hold, green ongoing/low priority, red lost/cancelled/high priority, teal complete, purple review and blue not started/normal priority."
+    ]
+  }
+]

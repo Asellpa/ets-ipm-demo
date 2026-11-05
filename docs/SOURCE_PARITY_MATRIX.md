@@ -1,3 +1,5 @@
+> Historical reference. Installation and production instructions are superseded by [the current README](../README.md) and [production operations](PRODUCTION_OPERATIONS.md). Do not use old demo credentials or reset/setup commands to upgrade an existing environment.
+
 # ETS IPM Source Parity Matrix
 
 Sources reviewed: Department Project & Task Tracking FRD, ETS Work Tracker prototype (Trial 10), and the supplied ETS tracker field structure.

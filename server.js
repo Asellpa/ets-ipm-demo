@@ -13,13 +13,19 @@ const ROOT = __dirname;
 const DATA = process.env.ETS_DATA_DIR ? path.resolve(process.env.ETS_DATA_DIR) : path.join(ROOT, 'data');
 const DB = path.join(DATA, 'db.json');
 const SEED = path.join(DATA, 'seed.json');
-const sessions = new Map();
+const Production=require('./production/config.cjs');
+Production.assert();
+const Pg=require('./production/postgres-store.cjs');
+const store=process.env.DATABASE_URL?Pg.create():null;
+const Files=require('./production/files.cjs');
+const sessions = Pg.securityMap('sessions');
+const tokenKey=token=>crypto.createHash('sha256').update(String(token)).digest('hex');
 const RequestSecurity=require('./request-security');
 const Records=require('./record-validation');
 const SERVER_VERSION=(()=>{try{return require('child_process').execFileSync('git',['rev-parse','--short','HEAD'],{cwd:ROOT,stdio:['ignore','pipe','ignore']}).toString().trim()}catch{return 'unversioned'}})();
 
 if (!fs.existsSync(DATA)) fs.mkdirSync(DATA, { recursive: true });
-if (!fs.existsSync(DB) && fs.existsSync(SEED)) fs.copyFileSync(SEED, DB);
+if (!store && process.env.NODE_ENV!=='production' && !fs.existsSync(DB) && fs.existsSync(SEED)) fs.copyFileSync(SEED, DB);
 
 const {PERMS,DEFAULT_PROFILES,fullPermissions}=require('./auth-profiles');
 
@@ -81,22 +87,25 @@ function normalize(db){
     u.capacity = u.resourceEnabled===false?0:Number(u.capacity??8);
     u.active = u.active !== false;
     u.profileId ||= u.name === 'Stephan' ? 'prof-admin' : u.role === 'LTSE' ? 'prof-ltse' : u.role === 'TSE/JTSE' ? 'prof-tse' : 'prof-senior';
-    if(u.name === 'Stephan' && !u.passwordHash) Object.assign(u, hashPassword('Testing','3960cf8e585c51dbae91a9b6f41ee4fc'));
+    if(process.env.NODE_ENV!=='production' && u.name === 'Stephan' && !u.passwordHash) Object.assign(u, hashPassword('Testing','3960cf8e585c51dbae91a9b6f41ee4fc'));
     delete u.password; delete u.role;
   }
   require('./clients').normalize(db);require('./shift-checklists').normalize(db);
   db.workflowConfig=normalizeWorkflowPermissions(db.workflowConfig,db.profiles);
   return db;
 }
-const read = () => normalize(JSON.parse(fs.readFileSync(DB,'utf8')));
-const write = db => {require('./project-signoff').withdrawIfWorkReopened(db);const temp=DB+'.tmp';fs.writeFileSync(temp,JSON.stringify(normalize(db),null,2));fs.renameSync(temp,DB);};
-function body(req){ return new Promise((resolve,reject)=>{ let s=''; req.on('data',c=>{ s+=c; if(s.length>5e6) req.destroy(); }); req.on('end',()=>{ try{ const value=s?JSON.parse(s):{};if(!value||typeof value!=='object'||Array.isArray(value))throw new SyntaxError('Request body must be a JSON object');resolve(value); }catch(e){ reject(e); } }); req.on('error',reject); }); }
-function cookies(req){ return Object.fromEntries(String(req.headers.cookie||'').split(';').map(v=>v.trim()).filter(Boolean).map(v=>{ const i=v.indexOf('='); return [decodeURIComponent(v.slice(0,i)),decodeURIComponent(v.slice(i+1))]; })); }
-function sessionOf(req){ const t=cookies(req).ets_session,s=t&&sessions.get(t);if(s&&Date.now()-s.createdAt>28800000){sessions.delete(t);return null}return s; }
-function currentUser(req,db){ const s=sessionOf(req); return s && db.users.find(u=>u.id===s.userId && u.active); }
+const read = () => normalize(store?store.read():JSON.parse(fs.readFileSync(DB,'utf8')));
+const write = db => {require('./project-signoff').withdrawIfWorkReopened(db);if(store){store.write(db);return;}const temp=DB+'.tmp';fs.writeFileSync(temp,JSON.stringify(normalize(db),null,2));fs.renameSync(temp,DB);};
+function body(req){
+ if(req._bodyPromise)return req._bodyPromise;
+ return req._bodyPromise=new Promise((resolve,reject)=>{let size=0,parts=[],failed=false;req.on('data',c=>{size+=c.length;if(size>5*1024*1024){if(!failed){failed=true;reject(Object.assign(Error('Request exceeds 5 MB'),{statusCode:413}));}parts=[];}else if(!failed)parts.push(c);});req.on('end',()=>{if(failed)return;try{const text=Buffer.concat(parts).toString('utf8'),value=text?JSON.parse(text):{};if(!value||typeof value!=='object'||Array.isArray(value))throw new SyntaxError('Request body must be a JSON object');resolve(value);}catch(e){reject(e);}});req.on('error',reject);req.on('aborted',()=>reject(Error('Request aborted')));});
+}
+function cookies(req){return Object.fromEntries(String(req.headers.cookie||'').split(';').map(v=>v.trim()).filter(Boolean).flatMap(v=>{try{const i=v.indexOf('=');if(i<1)return [];return [[decodeURIComponent(v.slice(0,i)),decodeURIComponent(v.slice(i+1))]];}catch{return []}}));}
+function sessionOf(req){const t=cookies(req).ets_session,key=t&&tokenKey(t),s=key&&sessions.get(key);if(s&&(Date.now()-s.createdAt>28800000||Date.now()-(s.lastActive||s.createdAt)>1800000)){sessions.delete(key);return null;}if(s){s.lastActive=Date.now();sessions.set(key,s);}return s;}
+function currentUser(req,db){if(process.env.AUTH_MODE==='proxy')return Production.identity(req,db);const s=sessionOf(req);return s&&db.users.find(u=>u.id===s.userId&&u.active);}
 function profileOf(db,u){ return db.profiles.find(p=>p.id===u?.profileId); }
 function perms(db,u){ return profileOf(db,u)?.permissions || {}; }
-function send(res,code,obj,type='application/json',extra={}){ const out=type==='application/json'?JSON.stringify(obj):obj; res.writeHead(code,{'Content-Type':type,'Cache-Control':'no-store',...extra}); res.end(out); }
+function send(res,code,obj,type='application/json',extra={}){const response={code,out:type==='application/json'?JSON.stringify(obj):obj,headers:{'Content-Type':type,'Cache-Control':'no-store',...extra}};if(res._bufferResponse){res._pendingResponse=response;return;}res.writeHead(response.code,response.headers);res.end(response.out);}
 function requireAuth(req,res){ const db=read(), user=currentUser(req,db); if(!user){ send(res,401,{error:'Authentication required'}); return null; } return {db,user,profile:profileOf(db,user),permissions:perms(db,user)}; }
 function audit(db,user,text,meta={}){ const ap=project(db,meta.projectId);db.audit.unshift({...((ap||meta.projectType)?{projectType:ap?.type||meta.projectType,projectStage:ap?.stage||meta.projectStage}:{}),id:id('a'),ts:now(),user:user?.name||'System',role:profileOf(db,user)?.name||'',text,...meta});  }
 function notify(db,text,recipients=['All']){ db.notifications.unshift({id:id('n'),ts:now(),text,recipients,readBy:[]});  }
@@ -136,6 +145,7 @@ function spreadHours(startDate,total,max=8,dueDate='') {
 function isSystemAdmin(user){return user?.profileId==='prof-admin';}
 function protectedUser(db,user,target,nextProfile){if(isSystemAdmin(user))return false;if(isSystemAdmin(target)||nextProfile==='prof-admin')return true;const actor=perms(db,user);return [target?.profileId,nextProfile].filter(Boolean).some(id=>PERMS.some(key=>db.profiles.find(p=>p.id===id)?.permissions?.[key]&&!actor[key]));}
 function ownerError(db,value,current){if(value!==undefined&&typeof value!=='string')return 'Project owner must be selected from existing users';return value && value!==current && !db.users.some(u=>u.active&&u.name===value)?'Project owner must be an active existing user':'';}
+function identityEmailError(db,patch,uid){if(process.env.AUTH_MODE!=='proxy')return '';const previous=db.users.find(u=>u.id===uid)||{},next={...previous,...patch};if(next.active===false)return '';const email=String(next.email||'').trim().toLowerCase();if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))return 'A valid company identity email is required';if(db.users.some(u=>u.id!==uid&&u.active&&String(u.email||'').trim().toLowerCase()===email))return 'Email is already assigned to an active account';return '';}
 function activeAdminCount(db){ return db.users.filter(u=>u.active && profileOf(db,u)?.permissions?.manageUsers && profileOf(db,u)?.permissions?.manageRoles).length; }
 function profileExists(db,pid){ return db.profiles.some(p=>p.id===pid); }
 function uniqueUserConflict(db,uid,username,userId){ return db.users.some(x=>x.id!==uid && (String(x.username||'').toLowerCase()===String(username||'').trim().toLowerCase() || String(x.userId||'')===String(userId||'').trim())); }
@@ -148,21 +158,22 @@ function workflowNotify(db,p,user,before){const instance=db.projectWorkflows[p.i
 
 
 let mutationQueue=Promise.resolve();
-const server = http.createServer(async(req,res)=>{ let release;try{
+async function handle(req,res){ let release;try{
   const u = new URL(req.url,'http://localhost');
   if(!RequestSecurity.originAllowed(req))return send(res,403,{error:'Request origin is not allowed'});
   if(u.pathname.startsWith('/api/')&&!['GET','HEAD'].includes(req.method)){const previous=mutationQueue;mutationQueue=new Promise(resolve=>{release=resolve});await previous;}
 
+  if(process.env.AUTH_MODE==='proxy'&&['/api/login','/api/logout'].includes(u.pathname))return send(res,405,{error:'Use your company identity session to sign in or sign out'});
   if(req.method==='POST'&&u.pathname==='/api/login'){
     const b=await body(req), db=read(), login=String(b.user||'').trim().toLowerCase(), uid=String(b.id||'').trim();
     if(RequestSecurity.blocked(req,login))return send(res,429,{error:'Too many login attempts. Try again in 15 minutes.'},'application/json',{'Retry-After':'900'});
     const user=db.users.find(x=>(String(x.username||'').toLowerCase()===login||String(x.name||'').toLowerCase()===login)&&String(x.userId||'')===uid);
     if(!user||!user.active||!verifyPassword(b.password,user)){RequestSecurity.failed(req,login);return send(res,401,{error:'Invalid credentials or inactive account'});}RequestSecurity.succeeded(req,login);
-    const token=crypto.randomBytes(32).toString('hex'); sessions.set(token,{userId:user.id,createdAt:Date.now()}); user.lastLoginAt=now(); write(db);
+    const token=crypto.randomBytes(32).toString('hex'); sessions.set(tokenKey(token),{userId:user.id,createdAt:Date.now(),lastActive:Date.now()}); user.lastLoginAt=now(); write(db);
     return send(res,200,{ok:true,user:user.name},'application/json',{'Set-Cookie':`ets_session=${token}; HttpOnly; SameSite=Lax; Path=/; Max-Age=28800${RequestSecurity.secureCookie(req)?'; Secure':''}`});
   }
   if(req.method==='POST'&&u.pathname==='/api/logout'){
-    const t=cookies(req).ets_session; if(t)sessions.delete(t);
+    const t=cookies(req).ets_session; if(t)sessions.delete(tokenKey(t));
     return send(res,200,{ok:true},'application/json',{'Set-Cookie':'ets_session=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0'+(RequestSecurity.secureCookie(req)?'; Secure':'')});
   }
 
@@ -261,13 +272,13 @@ const server = http.createServer(async(req,res)=>{ let release;try{
     if(!['Bug','Suggestion','Question'].includes(b.type)||text.length<5||text.length>5000)return send(res,422,{error:'Choose a feedback type and enter 5–5000 characters'});
     if(String(b.expected||'').length>2000||String(b.page||'').length>120)return send(res,422,{error:'Feedback context is too long'});
     let screenshot;
-    if(b.screenshot){const image=b.screenshot;if(!['image/png','image/jpeg'].includes(image.mime)||typeof image.data!=='string'||image.data.length>1400000||! /^[A-Za-z0-9+/]+={0,2}$/.test(image.data))return send(res,422,{error:'Screenshot must be PNG or JPEG, at most 1 MB'});const bytes=Buffer.from(image.data,'base64');const valid=image.mime==='image/png'?bytes.subarray(0,8).equals(Buffer.from([137,80,78,71,13,10,26,10])):bytes[0]===255&&bytes[1]===216&&bytes[2]===255;if(!valid||bytes.length>1048576)return send(res,422,{error:'Invalid screenshot or file exceeds 1 MB'});screenshot={mime:image.mime,data:image.data};}
+    if(b.screenshot){const image=b.screenshot;if(!['image/png','image/jpeg'].includes(image.mime)||typeof image.data!=='string'||image.data.length>1400000||! /^[A-Za-z0-9+/]+={0,2}$/.test(image.data))return send(res,422,{error:'Screenshot must be PNG or JPEG, at most 1 MB'});const bytes=Buffer.from(image.data,'base64');const valid=image.mime==='image/png'?bytes.subarray(0,8).equals(Buffer.from([137,80,78,71,13,10,26,10])):bytes[0]===255&&bytes[1]===216&&bytes[2]===255;if(!valid||bytes.length>1048576)return send(res,422,{error:'Invalid screenshot or file exceeds 1 MB'});screenshot=await Files.store({mime:image.mime,data:image.data});}
     const feedback={id:id('fb'),type:b.type,description:text,expected:String(b.expected||'').trim(),page:String(b.page||'').trim(),createdAt:now(),createdById:user.id,createdBy:user.name,serverVersion:SERVER_VERSION,status:'New',adminNote:'',screenshot};
     db.feedback.unshift(feedback);audit(db,user,'Submitted demo feedback',{entityType:'feedback',entityId:feedback.id});write(db);return send(res,201,{ok:true,id:feedback.id});
   }
   if(req.method==='GET'&&/^\/api\/feedback\/[^/]+\/screenshot$/.test(u.pathname)){
     const f=db.feedback.find(f=>f.id===u.pathname.split('/')[3]);if(!f||(!ps.manageFeedback&&f.createdById!==user.id))return send(res,404,{error:'Feedback not found'});if(!f.screenshot)return send(res,404,{error:'Screenshot not found'});
-    return send(res,200,Buffer.from(f.screenshot.data,'base64'),f.screenshot.mime,{'X-Content-Type-Options':'nosniff','Content-Disposition':'inline; filename="feedback-screenshot.'+(f.screenshot.mime==='image/png'?'png':'jpg')+'"'});
+    return send(res,200,Files.bytes(f.screenshot),f.screenshot.mime,{'X-Content-Type-Options':'nosniff','Content-Disposition':'inline; filename="feedback-screenshot.'+(f.screenshot.mime==='image/png'?'png':'jpg')+'"'});
   }
   if(req.method==='PATCH'&&/^\/api\/feedback\/[^/]+$/.test(u.pathname)){
     if(!ps.manageFeedback)return send(res,403,{error:'Manage Feedback permission required'});const f=db.feedback.find(f=>f.id===u.pathname.split('/').pop());if(!f)return send(res,404,{error:'Feedback not found'});const b=await body(req);
@@ -278,22 +289,22 @@ const server = http.createServer(async(req,res)=>{ let release;try{
 
   if(req.method==='GET'&&u.pathname==='/api/admin/users'){
     if(!ps.manageUsers)return send(res,403,{error:'Manage Users permission required'});
-    return send(res,200,{users:db.users.map(x=>({id:x.id,name:x.name,username:x.username,userId:x.userId,email:x.email,position:x.position,capacity:x.capacity,resourceEnabled:isResource(x),profileId:x.profileId,active:x.active,lastLoginAt:x.lastLoginAt||'',offboardedAt:x.offboardedAt||'',offboardReason:x.offboardReason||''})),profiles:db.profiles.filter(p=>isSystemAdmin(user)||p.id!=='prof-admin').map(p=>({id:p.id,name:p.name}))});
+    return send(res,200,{authMode:process.env.AUTH_MODE==='proxy'?'proxy':'local',users:db.users.map(x=>({id:x.id,name:x.name,username:x.username,userId:x.userId,email:x.email,position:x.position,capacity:x.capacity,resourceEnabled:isResource(x),profileId:x.profileId,active:x.active,lastLoginAt:x.lastLoginAt||'',offboardedAt:x.offboardedAt||'',offboardReason:x.offboardReason||''})),profiles:db.profiles.filter(p=>isSystemAdmin(user)||p.id!=='prof-admin').map(p=>({id:p.id,name:p.name}))});
   }
   if(req.method==='POST'&&u.pathname==='/api/admin/users'){
     if(!ps.manageUsers)return send(res,403,{error:'Manage Users permission required'});
-    const b=await body(req); if(!b.name||!b.username||!b.userId||!b.password||!b.profileId)return send(res,400,{error:'Name, username, User ID, password and profile are required'});
-    if(String(b.password).length<6)return send(res,400,{error:'Password must be at least 6 characters'});
+    const b=await body(req);const identityError=identityEmailError(db,b);if(identityError)return send(res,422,{error:identityError}); if(!b.name||!b.username||!b.userId||(process.env.AUTH_MODE!=='proxy'&&!b.password)||!b.profileId)return send(res,400,{error:'Name, username, User ID, password and profile are required'});
+    if(process.env.AUTH_MODE!=='proxy'&&String(b.password).length<6)return send(res,400,{error:'Password must be at least 6 characters'});
     if(protectedUser(db,user,null,b.profileId))return send(res,403,{error:'You cannot assign a role with access above your own'});
     if(!profileExists(db,b.profileId))return send(res,400,{error:'Assigned profile does not exist'});
     if(uniqueUserConflict(db,null,b.username,b.userId))return send(res,409,{error:'Username or User ID already exists'});
-    const nu={id:id('u'),name:String(b.name).trim(),username:String(b.username).trim(),userId:String(b.userId).trim(),email:String(b.email||'').trim(),position:String(b.position||'').trim(),capacity:Number(b.capacity||8),profileId:b.profileId,active:b.active!==false,createdAt:now(),createdBy:user.name,...hashPassword(b.password)};
+    const nu={id:id('u'),name:String(b.name).trim(),username:String(b.username).trim(),userId:String(b.userId).trim(),email:String(b.email||'').trim(),position:String(b.position||'').trim(),capacity:Number(b.capacity||8),profileId:b.profileId,active:b.active!==false,createdAt:now(),createdBy:user.name,...(process.env.AUTH_MODE==='proxy'?{}:hashPassword(b.password))};
     db.users.push(nu); audit(db,user,`Created user ${nu.name}`,{entityType:'user',entityId:nu.id}); write(db); return send(res,201,{ok:true,id:nu.id});
   }
   if(req.method==='PATCH'&&/^\/api\/admin\/users\/[^/]+$/.test(u.pathname)){
     if(!ps.manageUsers)return send(res,403,{error:'Manage Users permission required'});
     const uid=u.pathname.split('/').pop(), target=db.users.find(x=>x.id===uid); if(!target)return send(res,404,{error:'User not found'});
-    const b=await body(req), before=structuredClone(target);if(protectedUser(db,user,target,b.profileId))return send(res,403,{error:'You cannot manage an account with access above your own'});if(Object.hasOwn(b,'capacity')&&(!Number.isFinite(Number(b.capacity))||Number(b.capacity)<(isResource(target)?0.01:0)||Number(b.capacity)>24||(!isResource(target)&&Number(b.capacity)!==0)))return send(res,422,{error:'Daily capacity must be greater than zero and at most 24'});
+    const b=await body(req), before=structuredClone(target);const identityError=identityEmailError(db,b,uid);if(identityError)return send(res,422,{error:identityError});if(protectedUser(db,user,target,b.profileId))return send(res,403,{error:'You cannot manage an account with access above your own'});if(Object.hasOwn(b,'capacity')&&(!Number.isFinite(Number(b.capacity))||Number(b.capacity)<(isResource(target)?0.01:0)||Number(b.capacity)>24||(!isResource(target)&&Number(b.capacity)!==0)))return send(res,422,{error:'Daily capacity must be greater than zero and at most 24'});
     const nextUsername=Object.hasOwn(b,'username')?String(b.username).trim():target.username, nextUserId=Object.hasOwn(b,'userId')?String(b.userId).trim():target.userId;
     if(!nextUsername||!nextUserId)return send(res,400,{error:'Username and User ID are required'});
     if(uniqueUserConflict(db,uid,nextUsername,nextUserId))return send(res,409,{error:'Username or User ID already exists'});
@@ -309,6 +320,7 @@ const server = http.createServer(async(req,res)=>{ let release;try{
     if(changes.length)audit(db,user,`Updated user ${target.name}: ${changes.map(c=>c.field).join(', ')}`,{entityType:'user',entityId:target.id,changes}); write(db); return send(res,200,{ok:true});
   }
   if(req.method==='POST'&&/^\/api\/admin\/users\/[^/]+\/password$/.test(u.pathname)){
+    if(process.env.AUTH_MODE==='proxy')return send(res,405,{error:'Passwords are managed by your company identity provider'});
     if(!ps.manageUsers)return send(res,403,{error:'Manage Users permission required'});
     const uid=u.pathname.split('/')[4], target=db.users.find(x=>x.id===uid), b=await body(req); if(!target)return send(res,404,{error:'User not found'});
     if(protectedUser(db,user,target))return send(res,403,{error:'You cannot reset the password of an account with access above your own'});
@@ -507,13 +519,13 @@ const server = http.createServer(async(req,res)=>{ let release;try{
   }
 
   if(req.method==='POST'&&u.pathname==='/api/users'){
-    if(!ps.manageTeam)return send(res,403,{error:'Manage Team permission required'}); const b=await body(req); if(!String(b.name||'').trim())return send(res,400,{error:'Name is required'});
+    if(!ps.manageTeam)return send(res,403,{error:'Manage Team permission required'}); const b=await body(req);const identityError=identityEmailError(db,b);if(identityError)return send(res,422,{error:identityError}); if(!String(b.name||'').trim())return send(res,400,{error:'Name is required'});
     const nu={id:id('u'),name:String(b.name).trim(),username:String(b.username||b.name).trim(),userId:String(b.userId||Math.floor(Math.random()*900000+100000)),email:String(b.email||'').trim(),position:String(b.position||'').trim(),capacity:Number(b.capacity||8),profileId:b.profileId&&profileExists(db,b.profileId)?b.profileId:'prof-tse',active:b.active!==false};
     if(protectedUser(db,user,null,nu.profileId))return send(res,403,{error:'You cannot assign a role with access above your own'});
     if(uniqueUserConflict(db,null,nu.username,nu.userId))return send(res,409,{error:'Username or User ID already exists'}); db.users.push(nu); audit(db,user,`Added team member ${nu.name}`,{entityType:'user',entityId:nu.id}); write(db); return send(res,201,{ok:true,id:nu.id});
   }
   if(req.method==='PATCH'&&/^\/api\/users\/[^/]+$/.test(u.pathname)){
-    if(!ps.manageTeam)return send(res,403,{error:'Manage Team permission required'}); const uid=u.pathname.split('/').pop(), target=db.users.find(x=>x.id===uid); if(!target)return send(res,404,{error:'User not found'}); const b=await body(req),before=structuredClone(target);if(Object.hasOwn(b,'capacity')&&(!Number.isFinite(Number(b.capacity))||Number(b.capacity)<(isResource(target)?0.01:0)||Number(b.capacity)>24||(!isResource(target)&&Number(b.capacity)!==0)))return send(res,422,{error:'Daily capacity must be greater than zero and at most 24'});
+    if(!ps.manageTeam)return send(res,403,{error:'Manage Team permission required'}); const uid=u.pathname.split('/').pop(), target=db.users.find(x=>x.id===uid); if(!target)return send(res,404,{error:'User not found'}); const b=await body(req),before=structuredClone(target);const identityError=identityEmailError(db,b,uid);if(identityError)return send(res,422,{error:identityError});if(Object.hasOwn(b,'capacity')&&(!Number.isFinite(Number(b.capacity))||Number(b.capacity)<(isResource(target)?0.01:0)||Number(b.capacity)>24||(!isResource(target)&&Number(b.capacity)!==0)))return send(res,422,{error:'Daily capacity must be greater than zero and at most 24'});
     if(protectedUser(db,user,target))return send(res,403,{error:'You cannot manage an account with access above your own'});
     if(target.id===user.id&&b.active===false)return send(res,400,{error:'You cannot deactivate your own account'});
     if(isSystemAdmin(target)&&b.active===false&&db.users.filter(x=>x.active&&isSystemAdmin(x)).length<=1)return send(res,400,{error:'At least one active System Administrator must remain'});
@@ -556,7 +568,7 @@ const server = http.createServer(async(req,res)=>{ let release;try{
     if(!ps.exportData)return send(res,403,{error:'Export permission required'});
     const projects=db.projects.filter(p=>p.type!=='commercial'||ps.viewCommercial), ids=new Set(projects.map(p=>p.id));
     const tasks=db.tasks.filter(t=>ids.has(t.projectId)&&canReadTask(t,ps,project(db,t.projectId),db,user)), tids=new Set(tasks.map(t=>t.id));
-    return send(res,200,{clients:ps.viewClients?db.clients:[],checklistTemplates:db.checklistTemplates.filter(t=>ps.manageChecklists||t.active&&t.roleIds.includes(user.profileId)),checklistRuns:db.checklistRuns.filter(r=>r.userId===user.id||ps.reviewChecklists),projects:projects.map(p=>safeProject(p,ps,db,user)),tasks:tasks.map(t=>safeTask(t,ps,project(db,t.projectId))),comments:db.comments.filter(c=>tids.has(c.taskId)),escalations:ps.viewReports?db.escalations.filter(e=>tids.has(e.taskId)):[],leave:ps.manageLeave?db.leave:[],audit:ps.viewAudit?db.audit.filter(a=>workflowAuditVisible(db,a,user,ps)).map(a=>safeAudit(a,ps,db,user)):[],workflows:projects.filter(p=>canReadTask({},ps,p,db,user)).map(p=>({projectId:p.id,workflow:WF.view(db,p,user,ps)})),attachments:(db.objectAttachments||[]).filter(f=>projects.some(p=>p.id===f.projectId&&canReadTask({},ps,p,db,user)&&WF.canRead(db,p,user,ps,f.nodeId)&&(!require('./financial-access').financialFile(f,db.projectWorkflows[p.id]?.nodes.find(n=>n.id===f.nodeId),db.projectWorkflows[p.id]?.nodes)||ps.viewCommercialFields))),users:db.users.map(({id,name,position,capacity,active})=>({id,name,position,capacity,active}))},'application/json',{'Content-Disposition':'attachment; filename="ets-ipm-data.json"'});
+    return send(res,200,{clients:ps.viewClients?db.clients:[],checklistTemplates:db.checklistTemplates.filter(t=>ps.manageChecklists||t.active&&t.roleIds.includes(user.profileId)),checklistRuns:db.checklistRuns.filter(r=>r.userId===user.id||ps.reviewChecklists),projects:projects.map(p=>safeProject(p,ps,db,user)),tasks:tasks.map(t=>safeTask(t,ps,project(db,t.projectId))),comments:db.comments.filter(c=>tids.has(c.taskId)),escalations:ps.viewReports?db.escalations.filter(e=>tids.has(e.taskId)):[],leave:ps.manageLeave?db.leave:[],audit:ps.viewAudit?db.audit.filter(a=>workflowAuditVisible(db,a,user,ps)).map(a=>safeAudit(a,ps,db,user)):[],workflows:projects.filter(p=>canReadTask({},ps,p,db,user)).map(p=>({projectId:p.id,workflow:WF.view(db,p,user,ps)})),attachments:(db.objectAttachments||[]).filter(f=>projects.some(p=>p.id===f.projectId&&canReadTask({},ps,p,db,user)&&WF.canRead(db,p,user,ps,f.nodeId)&&(!require('./financial-access').financialFile(f,db.projectWorkflows[p.id]?.nodes.find(n=>n.id===f.nodeId),db.projectWorkflows[p.id]?.nodes)||ps.viewCommercialFields))).map(Files.exportFile),users:db.users.map(({id,name,position,capacity,active})=>({id,name,position,capacity,active}))},'application/json',{'Content-Disposition':'attachment; filename="ets-ipm-data.json"'});
   }
   if(req.method==='GET'&&u.pathname==='/api/export.csv'){
     if(!ps.exportData)return send(res,403,{error:'Export permission required'}); const pmap=Object.fromEntries(db.projects.map(p=>[p.id,p])),head=['WBS','Project','Client','Type','Stage','Task','Assignee','Status','MH Estimate','MH Actual','Flag'],lines=[head.map(csv).join(',')];
@@ -571,6 +583,7 @@ const server = http.createServer(async(req,res)=>{ let release;try{
     return send(res,200,lines.join('\n'),'text/csv');
   }
   if(req.method==='POST'&&u.pathname==='/api/demo/clear-records'){
+    if(process.env.NODE_ENV==='production'||store)return send(res,410,{error:'Demo maintenance is disabled for database deployments'});
     if(!isSystemAdmin(user))return send(res,403,{error:'System Administrator access required'});
     fs.copyFileSync(DB,DB+'.backup-'+Date.now());
     require('./demo-maintenance').clearProjects(db);
@@ -581,12 +594,33 @@ const server = http.createServer(async(req,res)=>{ let release;try{
     return send(res,410,{error:'Seed reset is disabled. Use the local demo setup command to clear project records without replacing accounts.'});
   }
 
-  if(u.pathname.startsWith('/api/'))return send(res,404,{error:'API route not found. Update and restart the backend on port 5174 to match the demo.'});
-  const file=u.pathname==='/'?path.join(ROOT,'public','index.html'):path.join(ROOT,'public',u.pathname.replace(/^\//,''));
-  if(!file.startsWith(path.join(ROOT,'public')))return send(res,403,'Forbidden','text/plain');
-  if(fs.existsSync(file)&&fs.statSync(file).isFile()){res.writeHead(200,{'Content-Type':mime(file),'Cache-Control':'no-store'});return fs.createReadStream(file).pipe(res);}
+  if(u.pathname.startsWith('/api/'))return send(res,404,{error:'API route not found. Contact your application administrator if this persists.'});
+  const publicRoot=path.join(ROOT,process.env.NODE_ENV==='production'?'react/dist':'public');
+  const requested=path.resolve(publicRoot,'.'+decodeURIComponent(u.pathname));
+  if(!requested.startsWith(publicRoot+path.sep)&&requested!==publicRoot)return send(res,403,'Forbidden','text/plain');
+  const file=fs.existsSync(requested)&&fs.statSync(requested).isFile()?requested:path.join(publicRoot,'index.html');
+  if(fs.existsSync(file)){res.writeHead(200,{'Content-Type':mime(file),'Cache-Control':file.endsWith('index.html')?'no-store':'public, max-age=3600'});return fs.createReadStream(file).pipe(res);}
   return send(res,404,'Not found','text/plain');
-}catch(e){console.error(e);return send(res,e instanceof SyntaxError?400:500,{error:e instanceof SyntaxError?'Invalid JSON request body':e.message||'Server error'});}finally{release?.()}});
+}catch(e){console.error(JSON.stringify({event:'request_error',requestId:req.requestId,code:e.code||e.name}));return send(res,e.statusCode||(e instanceof SyntaxError?400:500),{error:e.statusCode?e.message:e instanceof SyntaxError?'Invalid JSON request body':process.env.NODE_ENV==='production'?'Unable to complete request. Contact your administrator.':e.message||'Server error'});}finally{release?.()}}
 
-server.listen(PORT,'0.0.0.0',()=>console.log(`ETS IPM running on port ${PORT}`));
-
+let ready=false;
+const server=http.createServer(async(req,res)=>{
+ req.requestId=crypto.randomUUID();const started=Date.now();
+ res.setHeader('X-Request-ID',req.requestId);res.setHeader('X-Content-Type-Options','nosniff');res.setHeader('Referrer-Policy','same-origin');res.setHeader('X-Frame-Options','DENY');
+ res.setHeader('Permissions-Policy','camera=(), microphone=(), geolocation=()');
+ if(process.env.NODE_ENV==='production'){res.setHeader('Strict-Transport-Security','max-age=31536000');res.setHeader('Content-Security-Policy',"default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self'; object-src 'none'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'");}
+ res.on('finish',()=>{if(process.env.NODE_ENV==='production')console.log(JSON.stringify({event:'http',requestId:req.requestId,method:req.method,status:res.statusCode,durationMs:Date.now()-started}));});
+ const pathname=new URL(req.url,'http://localhost').pathname;
+ if(pathname==='/health/live')return send(res,200,{status:'ok'});
+ if(pathname==='/health/ready'){try{if(!ready)throw Error();if(store)await store.check();if(process.env.ETS_FILE_DIR)fs.accessSync(process.env.ETS_FILE_DIR,fs.constants.R_OK|fs.constants.W_OK);return send(res,200,{status:'ready'});}catch{return send(res,503,{status:'unavailable'});}}
+ if(pathname==='/api/auth/config')return send(res,200,{mode:process.env.AUTH_MODE==='proxy'?'proxy':'local',signIn:'/oauth2/start?rd=%2F',signOut:'/oauth2/sign_out?rd=%2F'});
+ try{
+  if(pathname.startsWith('/api/')&&!['GET','HEAD','OPTIONS'].includes(req.method))await body(req);
+  if(store&&pathname.startsWith('/api/')){res._bufferResponse=true;await store.run(res,()=>handle(req,res));const response=res._pendingResponse;if(!response)throw Error('Missing response');res._bufferResponse=false;res.writeHead(response.code,response.headers);res.end(response.out);}
+  else await handle(req,res);
+ }catch(e){res._bufferResponse=false;console.error(JSON.stringify({event:'transaction_error',requestId:req.requestId,code:e.code||e.name}));if(!res.headersSent)send(res,e.statusCode||(e instanceof SyntaxError?400:e.code==='23505'?409:503),{error:e.statusCode?e.message:e instanceof SyntaxError?'Invalid JSON request body':e.code==='23505'?'Record conflicts with an existing unique value':'Service unavailable. Retry later or contact your administrator.'});}
+});
+server.requestTimeout=30000;server.headersTimeout=15000;server.keepAliveTimeout=5000;
+async function start(){if(store)await store.check();ready=true;server.listen(PORT,process.env.HOST||'0.0.0.0',()=>console.log(`ETS IPM running on port ${PORT}`));}
+start().catch(e=>{console.error('Startup failed: '+e.message);process.exit(1);});
+for(const signal of ['SIGTERM','SIGINT'])process.on(signal,()=>{ready=false;server.close(async()=>{if(store)await store.close();process.exit(0);});setTimeout(()=>process.exit(1),15000).unref();});

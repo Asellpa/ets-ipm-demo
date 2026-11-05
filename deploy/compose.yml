@@ -1,0 +1,54 @@
+# Candidate deployment: IT must supply HTTPS ingress/VPN, identity gateway and encrypted disks.
+# Only loopback ingress is published. Never expose app, PostgreSQL or clamd directly.
+services:
+  app:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    restart: unless-stopped
+    read_only: true
+    tmpfs: [/tmp]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    ports: ["127.0.0.1:5174:5174"]
+    environment:
+      NODE_ENV: production
+      DATABASE_URL_FILE: /run/secrets/database_url
+      IDENTITY_PROXY_SECRET_FILE: /run/secrets/identity_proxy_secret
+      AUTH_MODE: proxy
+      APP_ORIGINS: ${APP_ORIGINS:?Set exact HTTPS application origin}
+      TRUST_PROXY: "true"
+      ETS_DATA_DIR: /tmp/ipm
+      ETS_FILE_DIR: /var/lib/ipm/files
+      CLAMD_HOST: scanner
+    secrets: [database_url, identity_proxy_secret]
+    volumes: ["private_files:/var/lib/ipm/files"]
+    depends_on:
+      database: {condition: service_healthy}
+      scanner: {condition: service_started}
+  database:
+    image: postgres:17-bookworm
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ipm
+      POSTGRES_USER: ipm_owner
+      POSTGRES_PASSWORD_FILE: /run/secrets/database_password
+    secrets: [database_password]
+    volumes: ["postgres_data:/var/lib/postgresql/data"]
+    healthcheck:
+      test: [CMD-SHELL, "pg_isready -U ipm_owner -d ipm"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+  scanner:
+    image: clamav/clamav:stable
+    restart: unless-stopped
+    volumes: ["clamav_signatures:/var/lib/clamav"]
+secrets:
+  database_url: {file: ./secrets/database_url}
+  database_password: {file: ./secrets/database_password}
+  identity_proxy_secret: {file: ./secrets/identity_proxy_secret}
+volumes:
+  postgres_data:
+  private_files:
+  clamav_signatures:

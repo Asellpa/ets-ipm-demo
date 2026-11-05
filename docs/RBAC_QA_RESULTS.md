@@ -1,3 +1,5 @@
+> Historical reference. Installation and production instructions are superseded by [the current README](../README.md) and [production operations](PRODUCTION_OPERATIONS.md). Do not use old demo credentials or reset/setup commands to upgrade an existing environment.
+
 # ETS IPM — RBAC / Users QA Results
 
 Date: 2026-09-02
@@ -6,7 +8,7 @@ Branch: `security-rbac-qa`
 ## Verified backend checks
 
 - Server syntax check: PASS (`node --check`).
-- System Administrator login (`Stephan` / `123` / `Testing`): PASS.
+- System Administrator login (isolated synthetic account): PASS.
 - LTSE commercial pricing masking: PASS.
 - LTSE Commercial RFQ engineering/MH visibility: PASS.
 - LTSE task assignment permission: PASS.
@@ -45,3 +47,4 @@ Branch: `security-rbac-qa`
 ## Remaining validation
 
 A browser-level smoke test on the deployed Render build is still required after merge/deployment. This QA pass verifies backend/API behavior and syntax, not full visual browser interaction.
+

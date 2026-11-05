@@ -1,6 +1,8 @@
 # ETS IPM demo — pending work tracker
 
-Updated: 23 October 2026. Branch: `react-migration`. Owner: unassigned unless noted.
+Current production status: [PRODUCTION_READINESS.md](PRODUCTION_READINESS.md), 6 November 2026. Entries below are chronological engineering history and may be superseded.
+
+Original tracker date: 23 October 2026. Branch: `react-migration`. Owner: unassigned unless noted.
 
 This is the current engineering backlog, not a declaration of complete FRD compliance. Keep IDs when updating status. Record acceptance evidence or a linked issue before marking a row Done. P0 blocks production; P1 is next-priority work; P2 is an improvement or decision.
 
@@ -165,3 +167,7 @@ Client profiles and checklist data are included in JSON exports only with their 
 ## My Work checklist panel and semantic colours, 5 November 2026
 My Work includes an independent daily checklist panel alongside tasks on desktop and below them on narrow screens. It uses the existing dated records, revisions and ownership checks, so the full checklist view and My Work share progress without duplicate runs. Embedded reads request own templates/runs/history only, including for reviewers. Completion remains per-person/per-day; templates now use explicit item rows, required toggles, add/remove and an optional bulk-paste editor. Native completion checkboxes show green checked rows, counts and unsaved state; submitted records stay locked.
 Status and priority controls use a shared native ToneSelect and badge palette in the register, project popup, department tasks, object-linked tasks, task editor, reports and checklist records. Option labels, keyboard access, native selection and disabled/permission states remain intact. The selected value is coloured; native option colours are supplied where the OS/browser renders them. Colours supplement text. Existing Kanban status meanings are retained.
+
+## Production foundations, 6 November 2026
+
+Implemented a production candidate with PostgreSQL transactions/core relational constraints, explicit source-preserving migration/reconciliation, shared security state, private scanned files, identity-gateway integration, container/proxy candidates and recovery tools. Help & guides replaces technical/backlog noise in About; current READMEs supersede old runtime/credential instructions. See PRODUCTION_READINESS.md for precise implementation limits and remaining launch gates. No company infrastructure, identity provider, backup schedule or real data was changed. Actual MFA integration, off-host restore drill, security assessment, load acceptance and user acceptance remain open.

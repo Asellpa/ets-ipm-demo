@@ -1,0 +1,33 @@
+# Integrate into the COMPANY-MANAGED HTTPS virtual host; not a standalone complete config.
+# Requires nginx auth_request, oauth2-proxy on loopback:4180 and app on loopback:5174.
+# Store the random identity secret in a root-readable include; never commit its actual value.
+# IdP must enforce MFA. Configure oauth2-proxy OIDC issuer, exact callback, allowed domains,
+# secure cookie, CSRF controls, set_xauthrequest=true and approved session/refresh lifetimes.
+location /oauth2/ {
+    proxy_pass http://127.0.0.1:4180;
+    proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-Proto https;
+    proxy_set_header X-Auth-Request-Redirect $scheme://$host$request_uri;
+}
+location = /oauth2/auth {
+    internal;
+    proxy_pass http://127.0.0.1:4180/oauth2/auth;
+    proxy_pass_request_body off;
+    proxy_set_header Content-Length "";
+    proxy_set_header X-Original-URI $request_uri;
+    proxy_set_header Host $host;
+}
+location / {
+    auth_request /oauth2/auth;
+    error_page 401 = /oauth2/sign_in;
+    auth_request_set $ipm_email $upstream_http_x_auth_request_email;
+    proxy_set_header X-Forwarded-Email $ipm_email;
+    # This include must contain: proxy_set_header X-IPM-Proxy-Secret "<random 32+ chars>";
+    include /etc/nginx/private/ipm-identity-header.conf;
+    proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-Proto https;
+    proxy_set_header X-Forwarded-For $remote_addr;
+    proxy_pass http://127.0.0.1:5174;
+    client_max_body_size 5m;
+    proxy_read_timeout 40s;
+}

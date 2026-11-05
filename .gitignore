@@ -6,3 +6,10 @@ test-results/
 
 data/*.backup-*
 data/*.setup-*
+
+.env
+.env.*
+!.env.example
+deploy/secrets/
+backups/
+private-files/

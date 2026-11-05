@@ -1,4 +1,4 @@
-const failures=new Map();
+const failures=require('./production/postgres-store.cjs').securityMap('failures');
 const WINDOW=15*60*1000;
 function secureCookie(req){return process.env.SESSION_COOKIE_SECURE==='true'||process.env.NODE_ENV==='production'||!!req.socket.encrypted||(process.env.TRUST_PROXY==='true'&&req.headers['x-forwarded-proto']==='https');}
 function originAllowed(req){

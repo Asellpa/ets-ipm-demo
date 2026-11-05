@@ -1,0 +1,2 @@
+require('../config.cjs');const Pg=require('../postgres-store.cjs'),Files=require('../files.cjs');
+(async()=>{const p=Pg.pool();try{const db=await Pg.load(p);let count=0;for(const f of db.objectAttachments||[]){Files.bytes(f);count++;}for(const f of db.feedback||[])if(f.screenshot){Files.bytes(f.screenshot);count++;}console.log(JSON.stringify({verifiedFiles:count}));}finally{await p.end();}})().catch(()=>{console.error('File verification failed. Check restored file directory and database pairing.');process.exitCode=1;});

@@ -1,8 +1,10 @@
+> Historical reference. Installation and production instructions are superseded by [the current README](../README.md) and [production operations](PRODUCTION_OPERATIONS.md). Do not use old demo credentials or reset/setup commands to upgrade an existing environment.
+
 # ETS IPM — Client Demo Checklist
 
 Before presenting the deployed build:
 
-1. Sign in as Stephan / 123 / Testing.
+1. Sign in as your assigned named account.
 2. Open Users → Manage Users and confirm account administration loads.
 3. Open Users → Role Management and confirm the four default profiles are present.
 4. Open a Commercial RFQ and confirm pricing is visible to the administrator.
@@ -12,3 +14,4 @@ Before presenting the deployed build:
 8. Do not use sensitive/production client data in this JSON-backed demo environment.
 
 The deployed Render build still requires a final browser smoke test after the latest merge.
+

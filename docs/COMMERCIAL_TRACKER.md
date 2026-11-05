@@ -1,3 +1,5 @@
+> Historical reference. Installation and production instructions are superseded by [the current README](../README.md) and [production operations](PRODUCTION_OPERATIONS.md). Do not use old demo credentials or reset/setup commands to upgrade an existing environment.
+
 # Projects and Internal demo guide
 
 The active catalogue is reset once to **Projects** and **Internal**, as requested. Existing project records keep their saved workflow snapshots. No sample projects are added to the demo database. Later administrator edits and new templates are preserved.

@@ -1,3 +1,5 @@
+> Historical reference. Installation and production instructions are superseded by [the current README](../README.md) and [production operations](PRODUCTION_OPERATIONS.md). Do not use old demo credentials or reset/setup commands to upgrade an existing environment.
+
 # Current Build Status
 
 The Users/RBAC correction set has been merged to `main` and the backend/API verification for the role model has passed.
@@ -14,3 +16,4 @@ Remaining release activity:
 - Confirm the public demo is running the latest `main` commit
 
 Production hardening remains outside the demo scope, including persistent relational storage, enterprise identity, centralized logging, automated CI/E2E testing and production secret management.
+

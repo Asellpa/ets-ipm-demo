@@ -1,109 +1,51 @@
 # ETS Integrated Project Management
 
-ETS IPM is a departmental project and task tracking application covering Commercial RFQ work, Internal EER work, project/task hierarchy, user administration, role-based access control, capacity planning, reporting, notifications, and audit history.
+React/TypeScript application with a Node.js API for configurable project workflows, tasks, resource planning, role/field access, attachments, time records, clients and shift checklists.
 
-The current build is intended for functional demonstration and technical review against the supplied ETS requirements and tracker structure.
+## Current status
 
-## Run locally
+The local demo remains available. The production candidate adds PostgreSQL persistence, private scanned files and an identity-gateway integration. It is **not a deployed or independently security-approved production system**. Company identity/MFA, TLS/VPN, backup scheduling, restore acceptance, security assessment and user acceptance remain deployment gates. See [production readiness](docs/PRODUCTION_READINESS.md).
 
-Requirements: Node.js 18+.
+## Documentation
+
+- Users and administrators: **Help & guides** in the application, or [user guide](docs/guides/USER_GUIDE.md).
+- IT/deployment: [production operations](docs/PRODUCTION_OPERATIONS.md).
+- Recovery: [backup and restore](docs/RECOVERY.md).
+- Engineering scope and launch gates: [production readiness](docs/PRODUCTION_READINESS.md).
+- Earlier FRD/parity/QA documents are historical evidence, not current installation instructions. Their old test counts and demo-hosting descriptions do not establish production readiness.
+
+## Local development / existing demo
+
+Requires Node.js 22 or 24. From the repository root:
 
 ```powershell
+npm ci
+npm ci --prefix react
 npm run dev
 ```
 
-Open:
+In a second terminal, also at the repository root:
 
-```text
-http://localhost:5174
+```powershell
+npm --prefix react run demo
 ```
 
-No npm runtime dependencies are required; the application uses the Node.js built-in HTTP server.
+Open http://localhost:5175. The frontend proxies API calls to the backend on 5174. Do not add another `react` directory prefix if your terminal is already inside `react`; run `npm run demo` there.
 
-## Demo administrator
+Local development uses `data/db.json` (or `ETS_DATA_DIR`) unless DATABASE_URL is configured. Keep existing data. **Do not run setup:demo on an environment containing records you want to retain.** It is a deliberate demo reset command, not installation or upgrade.
 
-- Username: `Stephan`
-- User ID: `123`
-- Password: `Testing`
+No shared credentials are provided in this guide. Obtain named access from the administrator. Local seed data is synthetic and must not be deployed as production accounts.
 
-The administrator account is intended for demo use only.
+## Verification
 
-## Functional areas
-
-- Overview and project portfolio
-- Commercial RFQ projects
-- Internal EER projects
-- Level 1 Project → Level 2 Work Package → Level 3 Task hierarchy
-- Task assignment, status, MH estimate and actual MH tracking
-- Escalation and bottleneck handling with mandatory reasons for MH overruns
-- User account management, activation/deactivation, password reset and offboarding
-- Reusable role/permission profiles
-- Server-side RBAC and restricted-field masking
-- Capacity and manpower planning
-- Team roster and leave/availability management
-- Notifications and task comments
-- Management reports and CSV import/export
-- Audit and change history
-- Field/system settings
-
-## Access model
-
-Application permissions are derived from the authenticated user's assigned profile and enforced by the API.
-
-Default profiles:
-
-- **System Administrator** — full application and administration access
-- **Senior Management** — Commercial, pricing, project, assignment, reporting and audit access
-- **LTSE** — engineering lead access, including Commercial RFQ engineering/MH information and task assignment, without pricing access
-- **TSE/JTSE** — task execution and Internal EER access; Commercial RFQ engineering/MH fields are restricted before handover and task assignment is not permitted
-
-Commercial/pricing access is intentionally separate from Commercial RFQ engineering/MH access.
-
-## Architecture
-
-- **Frontend:** HTML, CSS and vanilla JavaScript
-- **API:** Node.js built-in HTTP server
-- **Authentication:** server-side session cookie with password hashes stored in the demo data store
-- **Authorization:** profile-based permission checks enforced on API routes and protected API response fields
-- **Demo persistence:** JSON (`data/db.json`), initialized from `data/seed.json`
-
-`data/db.json` is excluded from source control so local/demo changes do not alter the seed dataset.
-
-## Project structure
-
-```text
-public/
-  index.html       Application shell
-  styles.css       Main UI styles
-  app.js           Core application UI/workflows
-  admin.js         User and role administration UI
-
-data/
-  seed.json        Demo seed dataset
-
-docs/
-  FRD_TRACEABILITY.md
-  RBAC_QA_RESULTS.md
-  DEV_DEMO_NOTES.md
-  CLIENT_DEMO_CHECKLIST.md
-  RELEASE_NOTE_RBAC.md
-
-server.js           HTTP API, authentication, RBAC and persistence
-package.json        Run scripts/project metadata
+```powershell
+npm run qa:react
+npx playwright install chromium
+npm run test:e2e
 ```
 
-## Security notes
+Browser/API tests use isolated synthetic data; stop local servers on 5174/5175 before browser QA. PostgreSQL integration tests require an explicitly configured **isolated** test database; see production operations. Tests do not authorise deployment or prove regulatory compliance.
 
-This build contains controls suitable for demonstration, including password hashing, server-managed sessions, active/inactive account checks, session revocation, protected permission profiles and server-side field masking.
+## Production
 
-Before production use, replace the JSON data store with a persistent relational database and implement enterprise identity/authentication such as Microsoft Entra ID or another approved identity provider. Production deployment should also include environment-specific secrets, HTTPS-only cookies, centralized logging, automated tests, backups and private source control.
-
-## Deployment note
-
-The application reads the hosting platform's `PORT` environment variable and binds to `0.0.0.0`, so it can run on platforms such as Render.
-
-JSON-file persistence is not suitable for a production or multi-instance hosted deployment. Data may reset when an ephemeral service is restarted or redeployed.
-
-## Technical reference
-
-See `docs/FRD_TRACEABILITY.md` for requirement mapping and `docs/RBAC_QA_RESULTS.md` for the role/security verification completed for the current build.
+Do not use Vite development/preview servers or a development tunnel for production. Build the React frontend and run the supervised backend behind company-managed HTTPS and an MFA identity gateway. PostgreSQL and file/scanner services must remain private. Start with the operations runbook; do not point migration commands at existing production data.
