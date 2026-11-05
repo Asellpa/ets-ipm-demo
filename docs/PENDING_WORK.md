@@ -171,3 +171,7 @@ Status and priority controls use a shared native ToneSelect and badge palette in
 ## Production foundations, 6 November 2026
 
 Implemented a production candidate with PostgreSQL transactions/core relational constraints, explicit source-preserving migration/reconciliation, shared security state, private scanned files, identity-gateway integration, container/proxy candidates and recovery tools. Help & guides replaces technical/backlog noise in About; current READMEs supersede old runtime/credential instructions. See PRODUCTION_READINESS.md for precise implementation limits and remaining launch gates. No company infrastructure, identity provider, backup schedule or real data was changed. Actual MFA integration, off-host restore drill, security assessment, load acceptance and user acceptance remain open.
+
+## Checklist and ownership review — 6 November 2026
+
+Default all-staff checklist access is now limited to System Administrator/Admin; explicit delegation remains possible. Personal/review/template scopes, history pagination, saved-zone edit flags, discard behaviour and role/session revocation were reviewed and corrected. Task ownership, personal notifications/read state and leave privacy were additionally hardened around user IDs; ambiguous legacy ownership fails closed and is reported for reviewed reassignment. See CHECKLIST_ACCESS_REVIEW.md for exact access rules, evidence scope and remaining presentation limitations. No project/checklist records were deleted. Production acceptance/security gates remain open.

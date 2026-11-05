@@ -270,7 +270,7 @@ function canUpdateTask(db, p, user, ps, t) {
     if (cur.permissions?.[user.profileId] !== undefined) return false;
     cur = instance.nodes.find((n) => n.id === cur.parent);
   }
-  return !editError(db, p, user, ps, node.id) || t.assignee === user.name;
+  return !editError(db, p, user, ps, node.id) || require('./assignment-policy').owns(db,t,user);
 }
 function canPlanTask(db, p, user, ps, t) {
   if (!ps.assignTasks) return false;

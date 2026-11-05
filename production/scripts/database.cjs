@@ -7,6 +7,8 @@ function validate(db){
  const unique=(list,key,label)=>{const seen=new Set();for(const r of list||[]){const v=key(r);if(!v||seen.has(v))errors.push('Missing/duplicate '+label);seen.add(v);}};
  unique(db.projects,p=>String(p.wbs||''),'project WBS');unique(db.tasks,t=>t.projectId+'\0'+t.wbs,'task WBS');unique(db.users,u=>String(u.username||'').trim().toLowerCase(),'username');unique(db.users,u=>String(u.userId||''),'user code');
  const projects=new Set((db.projects||[]).map(p=>p.id)),profiles=new Set((db.profiles||[]).map(p=>p.id));
+ const users=new Set((db.users||[]).map(u=>u.id));
+ for(const t of db.tasks||[])if(t.assigneeId&&!users.has(t.assigneeId))errors.push('Invalid task owner reference');
  for(const t of db.tasks||[])if(!projects.has(t.projectId)||[t.mhActual,t.mhEstimate].some(n=>n!=null&&(!Number.isFinite(Number(n))||Number(n)<0)))errors.push('Invalid task reference/hours');
  for(const u of db.users||[])if(!profiles.has(u.profileId))errors.push('Unknown user profile');
  for(const id of Object.keys(db.projectWorkflows||{}))if(!projects.has(id))errors.push('Orphan workflow');

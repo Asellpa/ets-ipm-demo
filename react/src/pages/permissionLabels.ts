@@ -1,8 +1,8 @@
 export const permissionLabels:Record<string,{label:string;help:string}> = {
 viewClients:{label:"View Client Profiles",help:"Read client contacts and linked projects. Project and field permissions still filter linked work and hours."},
 manageClients:{label:"Manage Client Profiles",help:"Create, edit and archive clients. Requires View Client Profiles."},
-manageChecklists:{label:"Manage Shift Checklists",help:"Create and edit role-based start/end-of-shift templates. Existing checklist records retain their saved version."},
-reviewChecklists:{label:"Review Shift Checklists",help:"Read submitted and draft checklists for all staff; cannot complete another person’s checklist."},
+manageChecklists:{label:"Manage Shift Checklists",help:"Create, edit and archive role-based templates. Does not grant access to other staff records. Admins only by default; System Administrator can delegate."},
+reviewChecklists:{label:"Review Shift Checklists",help:"Read drafts, submissions and notes for ALL staff, not just your project/team. Cannot change or submit for anyone else. Admins only by default; delegate only to trusted reviewers."},
   "viewCommercial": {
     "label": "View Projects",
     "help": "See Project cards and RFQs."

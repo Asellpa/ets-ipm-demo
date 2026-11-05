@@ -25,6 +25,6 @@ async function handleTimeCorrections(ctx){
  if(actual>Number(task.mhEstimate||0)){task.flag='Escalation';task.flagReason=reason;db.escalations.unshift({id:id('e'),taskId:task.id,projectId:p.id,type:task.flag,reason,user:user.name,ts:now()});}
  if(task.workflowNodeId)db.projectWorkflows[p.id].revision++;
  audit(db,user,`Corrected time on ${task.wbs}: ${from.hours} → ${to.hours} h`,{entityType:'task',entityId:task.id,projectId:p.id,workflowNodeId:task.workflowNodeId,changes:[{field:'timeEntry',from,to}],comment:reason});
- if(entry.userId!==user.id)notify(db,`Time entry corrected on ${task.wbs} by ${user.name}`,[entry.user]);write(db);send(res,200,{ok:true,task:safeTask(task,ps,p)});return true;
+ if(entry.userId!==user.id)notify(db,`Time entry corrected on ${task.wbs} by ${user.name}`,[{userId:entry.userId}]);write(db);send(res,200,{ok:true,task:safeTask(task,ps,p)});return true;
 }
 module.exports={handleTimeCorrections};

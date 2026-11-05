@@ -1,3 +1,4 @@
+import {isTaskAssignee,sessionUser} from '../api';
 import ToneSelect from '../components/ToneSelect';
 import {taskStatuses} from '../project-utils';
 import TimeLog from '../components/TimeLog';
@@ -269,8 +270,8 @@ function ObjectDetails({
             task={task}
             data={data}
             parentBusy={busy}
-            canLog={data.users.find(u=>u.name===data.user)?.resourceEnabled!==false && task.assignee === data.user && !!data.permissions.updateActualMH && !task.workflowLocked && !busy}
-            canUpdate={!task.workflowLocked&&(!!data.permissions.assignTasks||task.assignee===data.user)}
+            canLog={sessionUser(data)?.resourceEnabled!==false && isTaskAssignee(task,data) && !!data.permissions.updateActualMH && !task.workflowLocked && !busy}
+            canUpdate={!task.workflowLocked&&(!!data.permissions.assignTasks||isTaskAssignee(task,data))}
             onSaved={onChange}
           />
         ))

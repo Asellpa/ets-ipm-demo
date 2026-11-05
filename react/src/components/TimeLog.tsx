@@ -1,3 +1,4 @@
+import {sessionUser} from '../api';
 import {useState,type FormEvent} from 'react';
 import {localToday,localTimeZone} from '../calendar';
 import {request,type Session,type Task,type TimeEntry} from '../api';
@@ -10,7 +11,7 @@ function Correction({task,entry,onSaved,onClose}:{task:Task;entry:TimeEntry;onSa
 export default function TimeLog({task,data,canLog=true,onSaved}:{task:Task;data?:Session;canLog?:boolean;onSaved:()=>Promise<void>}){
  const [date,setDate]=useState(localToday()),[hours,setHours]=useState(''),[description,setDescription]=useState(''),[reason,setReason]=useState('');
  const [entryId,setEntryId]=useState(()=>crypto.randomUUID()),[busy,setBusy]=useState(false),[error,setError]=useState(''),[editing,setEditing]=useState<string|null>(null);
- const p=data?.projects.find(p=>p.id===task.projectId),me=data?.users.find(u=>u.name===data.user);
+ const p=data?.projects.find(p=>p.id===task.projectId),me=data?sessionUser(data):undefined;
  const lead=!!(data?.permissions.assignTasks&&me&&[p?.managerId,p?.supervisorId].includes(me.id));
  const locked=task.workflowLocked||['Completed','Lost/Cancelled','Not Required','No-Go (Client)','No-Go (DOA)','Lost (DOA)'].includes(task.status||'');
  const mayCorrect=(e:TimeEntry)=>!!(data?.permissions.updateActualMH&&!locked&&(e.userId===me?.id||lead||data.profile==='System Administrator'));

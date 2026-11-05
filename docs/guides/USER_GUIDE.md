@@ -22,6 +22,8 @@ Readiness and handover checks belong to you and the displayed work date.
 4. Finish all required items, then choose Submit checklist. Optional items may remain unchecked. Submitted records become read-only.
 5. Use Shift Checklists → My history to review previous records. Reopening today’s submitted record requires a reason; it retains history. Template edits do not change existing records.
 6. Checklist completion does not log hours, complete project tasks or sign off a project. Reviewers can review staff records but cannot submit on their behalf.
+7. My history shows only your records. Use its date/status filters and Previous records / Next records to browse older entries. A record’s saved time zone controls whether it can still be edited or reopened.
+8. Archiving a template or changing its role assignment stops new starts; already-started snapshots remain in the owner’s dated records and follow the normal read-only/submission rules.
 
 ## Update assigned tasks
 
@@ -146,6 +148,8 @@ Maintain named accounts and role-specific daily checks.
 4. Open Shift Checklists → Templates to create/edit a template, choose Start of shift or End of day, select assigned roles and add individual items.
 5. Mark required items, remove unwanted rows and save the active template. Paste item list is available for bulk entry; “? ” marks an optional item.
 6. Template changes affect future runs. Assign System Administrator explicitly if that account should receive a checklist; it has no default operational template. Staff review is read-only and does not permit submitting for another user.
+7. System Administrator and Admin receive template management and staff review by default. Senior Management and staff do not. System Administrator may explicitly delegate either permission. Template management does not grant access to staff notes; staff review reads all staff, not only a project team, and never permits completing another person’s checklist.
+8. Use distinct display names, such as Alex Smith (1309), when people share a name. Ambiguous name-based task selections are rejected; changing a name does not transfer existing task ownership.
 
 ## Resolve common problems
 

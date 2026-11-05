@@ -166,3 +166,5 @@ select.tone-select:disabled{opacity:.8;cursor:not-allowed}
 @media(max-width:600px){.my-work-tasks .stats{grid-template-columns:minmax(0,1fr)}.checklist-editor-row{grid-template-columns:minmax(0,1fr) auto}.checklist-editor-text{grid-column:1/-1}.checklist-editor-row .checklist-required{justify-self:start}.my-work-tasks .stat{padding:16px}}
 
 .help-filters{display:grid;grid-template-columns:minmax(0,2fr) minmax(180px,1fr);gap:16px;margin:16px 0}.user-guide ol{padding-left:24px}.user-guide li{margin:12px 0}.help-filters input,.help-filters select{width:100%}@media(max-width:650px){.help-filters{grid-template-columns:minmax(0,1fr)}}
+
+.checklist-history-filters{display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end;margin:16px 0}.checklist-history-filters label{display:flex;flex-direction:column;gap:6px;min-width:160px}.checklist-history-filters select,.checklist-history-filters input{width:100%}
