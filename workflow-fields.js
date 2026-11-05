@@ -165,7 +165,7 @@ function validateValues(node, p, ps, values, users, profileId) {
             ": enter a valid number" +
             (f.min !== undefined ? " of at least " + f.min : ""),
         };
-      if (f.projectField !== "owner" && f.type === "select" && !f.options.includes(value))
+      if (f.projectField !== "owner" && !(f.projectField === "client" && p.type === "commercial") && f.type === "select" && !f.options.includes(value))
         return { error: f.label + ": choose a configured option" };
       if (f.type === "checkbox" && !["true", "false"].includes(value))
         return { error: f.label + ": invalid checkbox value" };
