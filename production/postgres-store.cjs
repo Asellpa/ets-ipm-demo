@@ -43,7 +43,7 @@ async function save(client,db,before={}){
 function create(){
  const connection=pool();
  return {
- async check(){const r=await connection.query('SELECT version FROM ipm_schema ORDER BY version DESC LIMIT 1');if(r.rows[0]?.version!==1)throw Error('Unsupported database schema; run reviewed migrations');},
+ async check(){const r=await connection.query('SELECT version FROM ipm_schema ORDER BY version DESC LIMIT 1');if(r.rows[0]?.version!==1)throw Error('Unsupported database schema; run reviewed migrations');if(!(await connection.query('SELECT 1 FROM ipm_meta WHERE id=true')).rowCount)throw Error('Database is empty; import reviewed records first');},
  async run(res,handler){const client=await connection.connect();try{
   await client.query('BEGIN');await client.query("SET LOCAL lock_timeout='10s'");await client.query('SELECT pg_advisory_xact_lock($1)',[LOCK]);
   const db=await load(client),before=structuredClone(db),security=(await client.query('SELECT data FROM ipm_security WHERE id=true')).rows[0].data,old=JSON.stringify(security);

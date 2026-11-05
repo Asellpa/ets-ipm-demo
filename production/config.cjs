@@ -1,4 +1,4 @@
-const fs=require('node:fs');
+const fs=require('node:fs'),path=require('node:path');
 function secret(name){if(process.env[name+'_FILE'])process.env[name]=fs.readFileSync(process.env[name+'_FILE'],'utf8').trim();return process.env[name];}
 for(const key of ['DATABASE_URL','IDENTITY_PROXY_SECRET'])secret(key);
 function errors(env=process.env){
@@ -8,7 +8,7 @@ function errors(env=process.env){
  if(env.AUTH_MODE!=='proxy')e.push('AUTH_MODE=proxy is required with an approved MFA identity gateway');
  if(!env.IDENTITY_PROXY_SECRET||env.IDENTITY_PROXY_SECRET.length<32)e.push('IDENTITY_PROXY_SECRET must contain at least 32 characters');
  if(!env.APP_ORIGINS||env.APP_ORIGINS.split(',').some(s=>{try{return new URL(s.trim()).protocol!=='https:'}catch{return true}}))e.push('APP_ORIGINS must list exact HTTPS origins');
- if(!env.ETS_FILE_DIR)e.push('ETS_FILE_DIR is required for private files');
+ if(!env.ETS_FILE_DIR)e.push('ETS_FILE_DIR is required for private files');else if(!path.isAbsolute(env.ETS_FILE_DIR)||['../public','../react/dist'].some(p=>{const root=path.resolve(__dirname,p),dir=path.resolve(env.ETS_FILE_DIR);return dir===root||dir.startsWith(root+path.sep)}))e.push('Private files must use an absolute path outside the web root');
  if(!env.CLAMD_HOST)e.push('CLAMD_HOST is required; uploads fail closed');
  return e;
 }

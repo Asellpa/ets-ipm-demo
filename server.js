@@ -22,7 +22,7 @@ const sessions = Pg.securityMap('sessions');
 const tokenKey=token=>crypto.createHash('sha256').update(String(token)).digest('hex');
 const RequestSecurity=require('./request-security');
 const Records=require('./record-validation');
-const SERVER_VERSION=(()=>{try{return require('child_process').execFileSync('git',['rev-parse','--short','HEAD'],{cwd:ROOT,stdio:['ignore','pipe','ignore']}).toString().trim()}catch{return 'unversioned'}})();
+const SERVER_VERSION=process.env.APP_VERSION||(()=>{try{return require('child_process').execFileSync('git',['rev-parse','--short','HEAD'],{cwd:ROOT,stdio:['ignore','pipe','ignore']}).toString().trim()}catch{return 'unversioned'}})();
 
 if (!fs.existsSync(DATA)) fs.mkdirSync(DATA, { recursive: true });
 if (!store && process.env.NODE_ENV!=='production' && !fs.existsSync(DB) && fs.existsSync(SEED)) fs.copyFileSync(SEED, DB);

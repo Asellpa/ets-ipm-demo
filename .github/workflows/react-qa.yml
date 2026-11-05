@@ -39,6 +39,8 @@ jobs:
         env:
           ETS_TEST_POSTGRES_CONTAINER: ${{ job.services.postgres.id }}
         run: npm run test:api
+      - name: Production container build
+        run: docker build --file deploy/Dockerfile --build-arg APP_VERSION=${{ github.sha }} --tag ets-ipm:ci .
       - name: Verify runner Chrome
         run: google-chrome --version
       - name: Isolated browser tests

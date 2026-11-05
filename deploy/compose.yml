@@ -5,6 +5,8 @@ services:
     build:
       context: ..
       dockerfile: deploy/Dockerfile
+      args:
+        APP_VERSION: ${APP_VERSION:-unversioned}
     restart: unless-stopped
     read_only: true
     tmpfs: [/tmp]

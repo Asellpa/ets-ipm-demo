@@ -11,6 +11,7 @@ Engineering/IT document. Do not embed this backlog in the user application. This
 - Production local login is disabled. Trusted identity-gateway email maps to exactly one active preprovisioned application user. A per-deployment secret and private network protect identity headers. No self-registration, email-based role elevation or automatic account creation. Company IdP/gateway must enforce MFA, sign-in restrictions, account recovery, session expiry and sign-out.
 - Persistent hashed local session keys and shared throttling when PostgreSQL is used. Development local sessions expire after 8 hours absolute or 30 minutes without API activity; polling counts as API activity. Production proxy sessions are governed by the gateway/IdP, not this local timer.
 - Production configuration checks, secure headers, response sanitisation, request size/time limits, request IDs, structured status/duration/error logs, readiness/liveness checks and graceful shutdown.
+- Vite tooling updated and a scoped minimatch security override applied to the lint toolchain; dependency audits are repeated during verification.
 - Container build, private service compose candidate, proxy integration example, encrypted backup script and isolated restore procedure. These are deployment candidates; actual company infrastructure is not yet configured.
 - Searchable end-user Help & guides. Technical hosting/backlog/demo credentials removed from the user page. Current root/React READMEs replace obsolete vanilla-interface instructions.
 
@@ -22,6 +23,7 @@ Engineering/IT document. Do not embed this backlog in the user application. This
 | Identity/MFA | Company identity administrator | Exact issuer/callback and email mapping; MFA; disabled-user/session revocation; recovery and emergency-access drill; gateway header spoof test |
 | Infrastructure | Company IT | HTTPS/VPN, private ports, encrypted disks/keys, separate staging/production, restricted secrets and runtime database role |
 | Recovery | Company IT + app maintainer | Off-host encrypted scheduled backups, separate backup rights, retention, alert delivery, measured database+file restore |
+| File service | Company IT + maintainer | Actual clamd clean-file/EICAR rejection and outage tests, signature-update monitoring, storage quotas, encrypted disk and retention policy |
 | Security | Independent assessor + maintainer | Scoped ASVS-based review/penetration test; no unresolved critical/high findings; dependency/image scan and remediation |
 | Data migration | Maintainer + data owner | Reviewed duplicate/orphan corrections, preflight/hash/count reconciliation, source backup, staging rehearsal |
 | Capacity | Maintainer + IT | Agreed concurrent load, realistic files/workflow size, latency/error thresholds; no lost updates |

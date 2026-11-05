@@ -6,7 +6,8 @@ COPY react/ ./
 RUN npm run build
 
 FROM node:22-bookworm-slim
-ENV NODE_ENV=production PORT=5174
+ARG APP_VERSION=unversioned
+ENV NODE_ENV=production PORT=5174 APP_VERSION=$APP_VERSION
 WORKDIR /app
 COPY package*.json ./
 RUN npm ci --omit=dev && npm cache clean --force
