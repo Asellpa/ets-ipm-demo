@@ -10,7 +10,8 @@ Choose the area for the work you need to do.
 2. Use My Work for your assigned tasks and daily shift checklists. Use Project Register to find and open projects; Grid and Kanban show the same records.
 3. Open a project by selecting its title in Grid or anywhere on its Kanban card. Use Expand in the project window for more space.
 4. Use the notification bell for unread notices. Use Send feedback to report a problem, including the steps and expected result. Never include passwords or confidential documents in feedback screenshots.
-5. If an area or action is missing, ask your administrator to check your role and the project’s access rules. Team membership alone does not grant access.
+5. Open Preferences in the header and choose Light, Dark or Device appearance. The choice is saved to your account; Device follows your operating system. Changing appearance does not change permissions or project data.
+6. If an area or action is missing, ask your administrator to check your role and the project’s access rules. Team membership alone does not grant access.
 
 ## Complete your daily checklist
 
@@ -161,4 +162,3 @@ Check saved state before retrying a change.
 4. If no checklist appears, confirm an active template is assigned to your current role and check the displayed date. Existing runs retain their original items.
 5. If you cannot sign in or the whole application is unavailable, contact your company’s support channel. In-app feedback requires a working signed-in session.
 6. Notifications are in-app; email delivery is not provided. Status/priority colours supplement labels: yellow hold, green ongoing/low priority, red lost/cancelled/high priority, teal complete, purple review and blue not started/normal priority.
-

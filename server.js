@@ -182,6 +182,17 @@ async function handle(req,res){ let release;try{
   if(u.pathname.startsWith('/api/')){ A=requireAuth(req,res); if(!A)return; }
   const db=A?.db, user=A?.user, ps=A?.permissions||{};
 
+  if(u.pathname==='/api/preferences'){
+    const appearance=['light','dark','system'].includes(user.preferences?.appearance)?user.preferences.appearance:'system';
+    if(req.method==='GET')return send(res,200,{appearance});
+    if(req.method==='PATCH'){
+      const b=await body(req);
+      if(!b||typeof b!=='object'||Array.isArray(b)||Object.keys(b).some(k=>k!=='appearance')||!['light','dark','system'].includes(b.appearance))return send(res,422,{error:'Choose Light, Dark or Device appearance'});
+      user.preferences={...user.preferences,appearance:b.appearance};write(db);return send(res,200,{appearance:b.appearance});
+    }
+    return send(res,405,{error:'Method not allowed'});
+  }
+
   if(await require('./clients').handle({req,res,url:u,db,user,ps,WF,body,send,audit,write,id,now,safeProject}))return;
   if(await require('./shift-checklists').handle({req,res,url:u,db,user,ps,body,send,audit,write,id,now}))return;
   if(await require('./field-configuration').handle({req,res,url:u,db,user,ps,WF,body,send,audit,write,normalizeWorkflowPermissions}))return;
@@ -256,7 +267,7 @@ async function handle(req,res){ let release;try{
     const visibleProjects=db.projects.filter(p=>p.type!=='commercial'||ps.viewCommercial);
     const visibleIds=new Set(visibleProjects.map(p=>p.id));
     const notifications=db.notifications.filter(n=>Assignment.canReadNotice(n,user)).filter(n=>!n.workflowNodeId||project(db,n.projectId)&&WF.canRead(db,project(db,n.projectId),user,ps,n.workflowNodeId));
-    return send(res,200,{authMode:process.env.AUTH_MODE==='proxy'?'proxy':'local',actorId:user.id,user:user.name,userId:user.userId,profile:profileOf(db,user)?.name,permissions:ps,clients:require('./clients').options(db,ps),
+    return send(res,200,{authMode:process.env.AUTH_MODE==='proxy'?'proxy':'local',actorId:user.id,preferences:{appearance:['light','dark','system'].includes(user.preferences?.appearance)?user.preferences.appearance:'system'},user:user.name,userId:user.userId,profile:profileOf(db,user)?.name,permissions:ps,clients:require('./clients').options(db,ps),
       users:db.users.filter(x=>x.active).map(x=>({id:x.id,name:x.name,position:x.position,capacity:x.capacity,resourceEnabled:isResource(x),profileId:x.profileId})),
       projectLinks:db.projectLinks.filter(l=>[l.projectId,l.linkedProjectId].every(pid=>visibleIds.has(pid)&&canReadTask({},ps,pmap[pid],db,user))),
       projects:visibleProjects.map(p=>safeProject(p,ps,db,user)),workflowSummaries:Object.fromEntries(visibleProjects.filter(p=>canReadTask({},ps,p,db,user)&&db.projectWorkflows[p.id]).map(p=>{const w=WF.view(db,p,user,ps);return [p.id,{name:w.name,completed:w.completed,total:w.total,isComplete:w.isComplete,active:w.nodes.filter(n=>!n.parent&&n.status==='In progress').map(n=>n.name)}]})),

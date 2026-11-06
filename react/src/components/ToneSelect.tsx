@@ -1,7 +1,7 @@
 import {Children,cloneElement,isValidElement,type CSSProperties,type ReactNode,type SelectHTMLAttributes} from 'react';
 import {statusTone} from '../project-utils';
 type Kind='status'|'priority';
-const palette:Record<string,{backgroundColor:string;color:string}>={red:{backgroundColor:'#fff0f2',color:'#9c2638'},yellow:{backgroundColor:'#fff7dd',color:'#805600'},green:{backgroundColor:'#eaf7ed',color:'#1b683a'},teal:{backgroundColor:'#e4f6f5',color:'#096870'},purple:{backgroundColor:'#f1eafa',color:'#674398'},blue:{backgroundColor:'#edf3fa',color:'#315986'},neutral:{backgroundColor:'#f1f4f7',color:'#475569'}};
+const palette:Record<string,{backgroundColor:string;color:string}>=Object.fromEntries(['red','yellow','green','teal','purple','blue','neutral'].map(tone=>[tone,{backgroundColor:`var(--tone-${tone}-bg)`,color:`var(--tone-${tone}-fg)`}]));
 export function optionTone(value:string,kind:Kind='status'){if(kind==='priority')return /^high$/i.test(value)?'red':/^low$/i.test(value)?'green':/^normal$/i.test(value)?'blue':'neutral';return !value||['all','Not Required','Draft','TBD'].includes(value)?'neutral':statusTone(value);}
 export function ToneBadge({value,kind='status'}:{value:string;kind?:Kind}){return <span className="tone-badge" data-tone={optionTone(value,kind)} style={palette[optionTone(value,kind)]}>{value||'—'}</span>}
 export default function ToneSelect({kind,children,className='',value,...props}:SelectHTMLAttributes<HTMLSelectElement>&{kind?:Kind}){
