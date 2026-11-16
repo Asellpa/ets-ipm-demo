@@ -579,5 +579,5 @@ dialog::backdrop{background:#07121c99}
 @media(prefers-color-scheme:dark){:root:not([data-theme]){--control-border:#8297ad;--field-surface:#101b26;--focus-ring:#62d5de}}
 :root body :is(input:not([type=checkbox]):not([type=radio]):not([type=range]):not([type=color]),select:not(.tone-select),textarea){border:1px solid var(--control-border);background-color:var(--field-surface);color:var(--ink)}
 :root body :is(input,select,textarea,button):focus-visible{outline:3px solid var(--focus-ring);outline-offset:2px}
-:root body :is(input,select,textarea)[aria-invalid=true]{border-color:var(--tone-red-fg)}
+:root body :is(input:not([type=checkbox]):not([type=radio]):not([type=range]):not([type=color]),select,textarea)[aria-invalid=true]{border-color:var(--tone-red-fg)}
 @media(forced-colors:active){:root body :is(input,select,textarea){border-color:ButtonText}:root body :is(input,select,textarea,button):focus-visible{outline-color:Highlight}}
