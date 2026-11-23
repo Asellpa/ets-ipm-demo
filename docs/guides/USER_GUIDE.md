@@ -45,7 +45,7 @@ Record dated time against your own assigned task.
 3. Future dates and combined totals above 24 hours per person/day are rejected. Logging above the task estimate requires an overrun reason.
 4. To correct an entry, select Correct entry and provide a reason. Original values remain in history. Setting hours to zero voids the entry. Completed work must be reopened by an authorised lead first.
 5. Reports → Time entries shows dated records and permitted exports. Historical opening balances are separate from dated entries. A formal timesheet approval process is not provided.
-6. A named project manager/supervisor with Manage and Approve Staff Time, or a staff administrator with that permission, can record work for the assigned worker. Enter an approval reason. The time belongs to the worker; your identity and approval reason are retained. Review & closure also lists project tasks with their time logs, subject to task permissions and locks.
+6. A named project manager/supervisor with Record and approve staff time, or a staff administrator with that permission, can record work for the assigned worker. Enter an approval reason. The time belongs to the worker; your identity and approval reason are retained. Review & closure also lists project tasks with their time logs, subject to task permissions and locks.
 
 ## Create and link clients
 

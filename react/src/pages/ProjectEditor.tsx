@@ -78,11 +78,8 @@ export default function ProjectEditor({
           setCatalog(result);
           setLoaded(true);
           if (!existing) {
-            setWorkflowId(
-              result.projectTypes?.find((t) => t.id === createType.current)?.workflowId ||
-                result.workflows[0]?.id ||
-                '',
-            );
+            const eligible=(result.projectTypes||[]).filter(t=>t.active!==false&&((t.kind||t.id)==='commercial'?canCommercial:canEer));
+            const selected=eligible.find(t=>t.id===createType.current)||eligible[0];createType.current=selected?.id||'';setType(createType.current);setWorkflowId(selected?.workflowId||'');
             setManagerId(result.defaultManagerId || '');
           }
         }
@@ -93,7 +90,7 @@ export default function ProjectEditor({
     return () => {
       active = false;
     };
-  }, [existing]);
+  }, [existing,canCommercial,canEer]);
   const [type, setType] = useState(
     createType.current,
   );
@@ -184,7 +181,7 @@ export default function ProjectEditor({
             );
           }}
         >
-          {(catalog.projectTypes||[]).filter(t=>(t.active!==false||t.id===type)&&((t.kind||t.id)==='commercial'?canCommercial:canEer)).map(t=><option key={t.id} value={t.id}>{t.name}</option>)}
+          {(catalog.projectTypes||[]).filter(t=>(t.active!==false||existing&&t.id===type)&&((t.kind||t.id)==='commercial'?canCommercial:canEer)).map(t=><option key={t.id} value={t.id}>{t.name}</option>)}
         </select>
       </label>
       <label>
