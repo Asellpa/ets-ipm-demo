@@ -1,8 +1,9 @@
+const {backendPort,stopBackend}=require('./backend-lifecycle.cjs');
 const {test}=require('node:test'),assert=require('node:assert/strict');
 const fs=require('node:fs'),os=require('node:os'),path=require('node:path'),{spawn}=require('node:child_process');
 test('final project sign-off requires named approver, completed work, revision and comment; reopening withdraws it',async()=>{
- const root=path.resolve(__dirname,'..'),dir=fs.mkdtempSync(path.join(os.tmpdir(),'ipm-signoff-')),port=57000+Math.floor(Math.random()*300);fs.copyFileSync(path.join(root,'tests/fixtures/legacy-seed.json'),path.join(dir,'seed.json'));const server=spawn(process.execPath,[path.join(root,'server.js')],{env:{...process.env,PORT:String(port),ETS_DATA_DIR:dir},stdio:'ignore'});
- try{for(let n=0;n<70;n++){try{await fetch(`http://127.0.0.1:${port}/`);break}catch{await new Promise(r=>setTimeout(r,100))}}
+ const root=path.resolve(__dirname,'..'),dir=fs.mkdtempSync(path.join(os.tmpdir(),'ipm-signoff-'));let port;fs.copyFileSync(path.join(root,'tests/fixtures/legacy-seed.json'),path.join(dir,'seed.json'));const server=spawn(process.execPath,[path.join(root,'server.js')],{env:{...process.env,PORT:'0',ETS_DATA_DIR:dir},stdio:'pipe'});
+ try{port=await backendPort(server);
  const call=async(cookie,url,method='GET',body)=>{const r=await fetch(`http://127.0.0.1:${port}/api${url}`,{method,headers:{Cookie:cookie,'Content-Type':'application/json'},body:body?JSON.stringify(body):undefined});return {status:r.status,data:await r.json(),cookie:r.headers.get('set-cookie')?.split(';')[0]}};
  const admin=(await call('','/login','POST',{user:'Stephan',id:'123',password:'Testing'})).cookie,boot=(await call(admin,'/bootstrap')).data;
  const {config}=(await call(admin,'/workflow-config')).data;config.workflows.push({id:'closure-test',name:'Closure',stages:['Overview'],objects:[],nodes:[{id:'overview',name:'Overview',type:'stage',parent:'',completion:'manual',permissions:{},fields:[]}]});assert.equal((await call(admin,'/workflow-config','PUT',{config})).status,200);
@@ -24,5 +25,5 @@ test('final project sign-off requires named approver, completed work, revision a
  assert.equal((await call(admin,'/projects/'+p.id+'/workflow/nodes/overview','PATCH',{action:'reopen',comment:'Follow-up work',expectedRevision:flow.revision})).status,200);
  record=(await call(admin,'/bootstrap')).data.projects.find(x=>x.id===p.id);assert.equal(record.status,'In Progress');assert.equal(record.signedOffBy,undefined);
  const c=(await call(admin,'/register-config')).data.config;assert.deepEqual(c.projectTypeOrder,['all','commercial','eer']);assert.equal((await call(admin,'/register-config','PUT',{...c,projectTypeOrder:['all','all','eer']})).status,422);assert.equal((await call(admin,'/register-config','PUT',{...c,projectTypeOrder:['eer','all','commercial']})).status,200);assert.deepEqual((await call(admin,'/register-config')).data.config.projectTypeOrder,['eer','all','commercial']);
- }finally{if(server.exitCode===null){server.kill();await new Promise(r=>server.once('exit',r))}fs.rmSync(dir,{recursive:true,force:true})}
+ }finally{if(server.exitCode===null){await stopBackend(server)}fs.rmSync(dir,{recursive:true,force:true})}
 });

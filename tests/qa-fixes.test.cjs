@@ -1,7 +1,8 @@
+const {backendPort,stopBackend}=require('./backend-lifecycle.cjs');
 const{test}=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),os=require('node:os'),path=require('node:path'),{spawn}=require('node:child_process');
 test('QA regressions: audit scope, deleted-project classification, WBS uniqueness, status/body validation and request security',async()=>{
- const root=path.resolve(__dirname,'..'),dir=fs.mkdtempSync(path.join(os.tmpdir(),'ipm-fixes-')),port=58000+Math.floor(Math.random()*500);fs.copyFileSync(path.join(root,'tests/fixtures/legacy-seed.json'),path.join(dir,'seed.json'));const server=spawn(process.execPath,[path.join(root,'server.js')],{env:{...process.env,PORT:String(port),ETS_DATA_DIR:dir,APP_ORIGINS:'https://approved.example',SESSION_COOKIE_SECURE:'true'},stdio:'ignore'});
- try{for(let i=0;i<70;i++){try{await fetch('http://127.0.0.1:'+port);break}catch{await new Promise(r=>setTimeout(r,100))}}
+ const root=path.resolve(__dirname,'..'),dir=fs.mkdtempSync(path.join(os.tmpdir(),'ipm-fixes-'));let port;fs.copyFileSync(path.join(root,'tests/fixtures/legacy-seed.json'),path.join(dir,'seed.json'));const server=spawn(process.execPath,[path.join(root,'server.js')],{env:{...process.env,PORT:'0',ETS_DATA_DIR:dir,APP_ORIGINS:'https://approved.example',SESSION_COOKIE_SECURE:'true'},stdio:'pipe'});
+ try{port=await backendPort(server);
  const call=async(cookie,route,method='GET',body,headers={})=>{const r=await fetch('http://127.0.0.1:'+port+'/api'+route,{method,headers:{Cookie:cookie||'','Content-Type':'application/json',...headers},body:body===undefined?undefined:JSON.stringify(body)});return{status:r.status,data:await r.json(),cookie:r.headers.get('set-cookie'),retry:r.headers.get('retry-after')}};
  const login=await call('','/login','POST',{user:'Stephan',id:'123',password:'Testing'}),admin=login.cookie.split(';')[0];assert.match(login.cookie,/; Secure/);
  const make=async(title,type='internal_eer',extra={})=>(await call(admin,'/projects','POST',{title,type,workflowId:type==='commercial'?'commercial':'eer',...extra})).data.project;
@@ -18,5 +19,5 @@ test('QA regressions: audit scope, deleted-project classification, WBS uniquenes
  assert.equal((await call(admin,'/projects/'+b.id,'PATCH',{title:'Approved'},{Origin:'https://approved.example'})).status,200);
  assert.equal((await call(admin,'/projects/'+b.id,'PATCH',{title:'Cross-site'},{'Sec-Fetch-Site':'cross-site'})).status,403);
  for(let i=0;i<10;i++)assert.equal((await call('','/login','POST',{user:'throttle-test',id:'none',password:'wrong'})).status,401);const throttled=await call('','/login','POST',{user:'throttle-test',id:'none',password:'wrong'});assert.equal(throttled.status,429);assert.equal(throttled.retry,'900');
- }finally{if(server.exitCode===null){server.kill();await new Promise(r=>server.once('exit',r))}fs.rmSync(dir,{recursive:true,force:true})}
+ }finally{if(server.exitCode===null){await stopBackend(server)}fs.rmSync(dir,{recursive:true,force:true})}
 });

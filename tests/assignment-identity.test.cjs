@@ -1,3 +1,4 @@
+const {backendPort,stopBackend}=require('./backend-lifecycle.cjs');
 const {test}=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),os=require('node:os'),path=require('node:path'),{spawn}=require('node:child_process');
 const Policy=require('../assignment-policy');
 test('legacy ownership binds only once; ambiguous names fail closed and notification reads use IDs',()=>{
@@ -7,8 +8,8 @@ test('legacy ownership binds only once; ambiguous names fail closed and notifica
  a.name='Renamed';Policy.renamed(db,a);assert.equal(db.tasks[0].assignee,'Renamed');assert.equal(db.leave[0].user,'Renamed');
 });
 test('a duplicate or reused display name cannot update tasks, log hours or receive another user’s notices/private leave',async()=>{
- const root=path.join(__dirname,'..'),dir=fs.mkdtempSync(path.join(os.tmpdir(),'ipm-owner-')),port=54500+Math.floor(Math.random()*500);fs.copyFileSync(path.join(root,'tests/fixtures/legacy-seed.json'),path.join(dir,'seed.json'));const server=spawn(process.execPath,[path.join(root,'server.js')],{env:{...process.env,PORT:String(port),ETS_DATA_DIR:dir},stdio:'ignore'});
- try{for(let i=0;i<100;i++){try{if((await fetch('http://127.0.0.1:'+port+'/health/ready')).ok)break;}catch{}await new Promise(r=>setTimeout(r,50));}
+ const root=path.join(__dirname,'..'),dir=fs.mkdtempSync(path.join(os.tmpdir(),'ipm-owner-'));let port;fs.copyFileSync(path.join(root,'tests/fixtures/legacy-seed.json'),path.join(dir,'seed.json'));const server=spawn(process.execPath,[path.join(root,'server.js')],{env:{...process.env,PORT:'0',ETS_DATA_DIR:dir},stdio:'pipe'});
+ try{port=await backendPort(server);
  const call=async(cookie,route,method='GET',body)=>{const r=await fetch('http://127.0.0.1:'+port+'/api'+route,{method,headers:{cookie:cookie||'','content-type':'application/json'},body:body===undefined?undefined:JSON.stringify(body)});return{status:r.status,data:await r.json(),cookie:r.headers.get('set-cookie')?.split(';')[0]}};
  const admin=(await call('','/login','POST',{user:'Stephan',id:'123',password:'Testing'})).cookie;
  async function account(login){const r=await call(admin,'/admin/users','POST',{name:'Same Person',username:login,userId:login,password:'Testing',profileId:'prof-tse'});assert.equal(r.status,201);return{id:r.data.id,cookie:(await call('','/login','POST',{user:login,id:login,password:'Testing'})).cookie};}
@@ -20,5 +21,5 @@ test('a duplicate or reused display name cannot update tasks, log hours or recei
  assert.equal((await call(admin,'/tasks','POST',{projectId:p.id,title:'Ambiguous owner',assignee:'Same Person'})).status,422);
  assert.equal((await call(admin,'/admin/users/'+a.id,'PATCH',{name:'Distinct Person'})).status,200);task=(await call(a.cookie,'/bootstrap')).data.tasks.find(t=>t.id===task.id);assert.equal(task.assignee,'Distinct Person');assert.equal(task.assigneeId,a.id);assert.equal((await call(b.cookie,'/tasks/'+task.id,'PATCH',{status:'Completed'})).status,403);
  assert.equal((await call(admin,'/tasks/'+task.id,'PATCH',{assigneeId:b.id})).status,200);assert.equal((await call(a.cookie,'/tasks/'+task.id,'PATCH',{status:'Completed'})).status,403);
- }finally{if(server.exitCode===null){server.kill();await new Promise(r=>server.once('exit',r));}fs.rmSync(dir,{recursive:true,force:true});}
+ }finally{if(server.exitCode===null){await stopBackend(server);}fs.rmSync(dir,{recursive:true,force:true});}
 });

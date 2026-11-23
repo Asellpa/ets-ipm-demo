@@ -1,7 +1,8 @@
+const {backendPort,stopBackend}=require('./backend-lifecycle.cjs');
 const {test}=require('node:test');const assert=require('node:assert/strict');const fs=require('node:fs'),os=require('node:os'),path=require('node:path'),{spawn}=require('node:child_process');
 test('register visibility/editing, project links, department WBS and task completion rules',async()=>{
- const root=path.resolve(__dirname,'..'),dir=fs.mkdtempSync(path.join(os.tmpdir(),'ipm-demo-')),port=55000+Math.floor(Math.random()*1000);fs.copyFileSync(path.join(root,'tests/fixtures/legacy-seed.json'),path.join(dir,'seed.json'));const server=spawn(process.execPath,[path.join(root,'server.js')],{env:{...process.env,PORT:String(port),ETS_DATA_DIR:dir},stdio:'ignore'});
- try{for(let i=0;i<70;i++){try{await fetch(`http://127.0.0.1:${port}/`);break}catch{await new Promise(r=>setTimeout(r,100))}}
+ const root=path.resolve(__dirname,'..'),dir=fs.mkdtempSync(path.join(os.tmpdir(),'ipm-demo-'));let port;fs.copyFileSync(path.join(root,'tests/fixtures/legacy-seed.json'),path.join(dir,'seed.json'));const server=spawn(process.execPath,[path.join(root,'server.js')],{env:{...process.env,PORT:'0',ETS_DATA_DIR:dir},stdio:'pipe'});
+ try{port=await backendPort(server);
  const call=async(cookie,route,method='GET',body)=>{const r=await fetch(`http://127.0.0.1:${port}/api${route}`,{method,headers:{Cookie:cookie,'Content-Type':'application/json'},body:body?JSON.stringify(body):undefined});return {status:r.status,data:await r.json(),cookie:r.headers.get('set-cookie')?.split(';')[0]}};const admin=(await call('','/login','POST',{user:'Stephan',id:'123',password:'Testing'})).cookie;
  const before=(await call(admin,'/bootstrap')).data.projects.length;const catalogue=(await call(admin,'/workflow-templates')).data;assert.deepEqual(catalogue.workflows.map(w=>w.name),['Projects','Internal']);assert.equal((await call(admin,'/bootstrap')).data.projects.length,before,'Loading templates must not create projects');
  const a=(await call(admin,'/projects','POST',{workflowId:'commercial',type:'commercial',title:'Linked Project'})).data.project,b=(await call(admin,'/projects','POST',{workflowId:'eer',type:'internal_eer',title:'Internal support'})).data.project;
@@ -12,5 +13,5 @@ test('register visibility/editing, project links, department WBS and task comple
  assert.equal((await call(admin,'/tasks/'+skipped.id+'/time-entries','POST',{entryId:'skipped-123',date:'2026-10-22',hours:1,description:'Invalid'})).status,403);
  await call(admin,'/admin/users','POST',{name:'Viewer',username:'Viewer',userId:'viewer',password:'Testing',profileId:'prof-tse'});const viewer=(await call('','/login','POST',{user:'Viewer',id:'viewer',password:'Testing'})).cookie;assert.equal((await call(viewer,'/register-config','PUT',{columns:['title'],editable:[]})).status,403);assert.equal((await call(viewer,'/bootstrap')).data.projectLinks.length,0);assert.equal((await call(viewer,'/project-links','POST',{projectId:a.id,linkedProjectId:b.id})).status,410);
  assert.equal((await call(admin,'/project-links/retired','DELETE')).status,410);assert.equal((await call(admin,'/bootstrap')).data.projectLinks.length,0);
- }finally{server.kill();await new Promise(r=>server.once('exit',r));fs.rmSync(dir,{recursive:true,force:true})}
+ }finally{await stopBackend(server);fs.rmSync(dir,{recursive:true,force:true})}
 });

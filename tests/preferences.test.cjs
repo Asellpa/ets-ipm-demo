@@ -1,8 +1,9 @@
+const {backendPort,stopBackend}=require('./backend-lifecycle.cjs');
 const{test}=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),os=require('node:os'),path=require('node:path'),{spawn}=require('node:child_process');
 test('appearance preferences are authenticated, account-scoped, validated and durable across restart',async()=>{
- const root=path.join(__dirname,'..'),dir=fs.mkdtempSync(path.join(os.tmpdir(),'ipm-preferences-')),port=54000+Math.floor(Math.random()*500);fs.copyFileSync(path.join(root,'tests/fixtures/legacy-seed.json'),path.join(dir,'seed.json'));let server;
- async function start(){server=spawn(process.execPath,[path.join(root,'server.js')],{env:{...process.env,PORT:String(port),ETS_DATA_DIR:dir},stdio:'ignore'});for(let i=0;i<100;i++){try{if((await fetch('http://127.0.0.1:'+port+'/health/ready')).ok)return}catch{}await new Promise(r=>setTimeout(r,50))}throw Error('Server failed to start')}
- async function stop(){if(server?.exitCode===null){server.kill();await new Promise(r=>server.once('exit',r))}}
+ const root=path.join(__dirname,'..'),dir=fs.mkdtempSync(path.join(os.tmpdir(),'ipm-preferences-'));let port;fs.copyFileSync(path.join(root,'tests/fixtures/legacy-seed.json'),path.join(dir,'seed.json'));let server;
+ async function start(){server=spawn(process.execPath,[path.join(root,'server.js')],{env:{...process.env,PORT:'0',ETS_DATA_DIR:dir},stdio:'pipe'});port=await backendPort(server);}
+ async function stop(){if(server?.exitCode===null){await stopBackend(server)}}
  async function call(cookie,route,method='GET',body){const r=await fetch('http://127.0.0.1:'+port+'/api'+route,{method,headers:{cookie:cookie||'','content-type':'application/json'},body:body===undefined?undefined:JSON.stringify(body)});return{status:r.status,data:await r.json(),cookie:r.headers.get('set-cookie')?.split(';')[0]}}
  const login=async(name='Stephan',id='123')=>(await call('','/login','POST',{user:name,id,password:'Testing'})).cookie;
  try{await start();assert.equal((await call('','/preferences')).status,401);let admin=await login();assert.equal((await call(admin,'/preferences')).data.appearance,'system');const created=await call(admin,'/admin/users','POST',{name:'Theme Staff',username:'theme-staff',userId:'theme-staff',password:'Testing',profileId:'prof-tse'});assert.equal(created.status,201);const staff=await login('theme-staff','theme-staff');

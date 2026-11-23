@@ -1,3 +1,4 @@
+const {backendPort,stopBackend}=require('./backend-lifecycle.cjs');
 const {test}=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),os=require('node:os'),path=require('node:path'),{spawn}=require('node:child_process');
 const Checks=require('../shift-checklists'),{DEFAULT_PROFILES}=require('../auth-profiles');
 test('checklist defaults migrate once; personal history is isolated before pagination and uses each saved time zone',()=>{
@@ -11,8 +12,8 @@ test('checklist defaults migrate once; personal history is isolated before pagin
  assert.equal(Checks.listing(db,user,{},url('scope=review'),at).status,403);assert.equal(Checks.listing(db,user,{},url('scope=templates'),at).status,403);assert.equal(Checks.listing(db,user,ps,url('scope=history&userId=other'),at).status,403);assert.equal(Checks.listing(db,user,ps,url('scope=review&date=2026-02-30'),at).status,422);assert.equal(Checks.listing(db,user,ps,url('limit=999'),at).status,422);
 });
 test('checklist API role matrix protects staff records, templates, exports and audit; delegation/revocation never grants completion for others',async()=>{
- const root=path.join(__dirname,'..'),dir=fs.mkdtempSync(path.join(os.tmpdir(),'ipm-checklist-access-')),port=53500+Math.floor(Math.random()*500);fs.copyFileSync(path.join(root,'tests/fixtures/legacy-seed.json'),path.join(dir,'seed.json'));const server=spawn(process.execPath,[path.join(root,'server.js')],{env:{...process.env,PORT:String(port),ETS_DATA_DIR:dir},stdio:'ignore'});
- try{for(let i=0;i<100;i++){try{if((await fetch('http://127.0.0.1:'+port+'/health/ready')).ok)break;}catch{}await new Promise(r=>setTimeout(r,50));}
+ const root=path.join(__dirname,'..'),dir=fs.mkdtempSync(path.join(os.tmpdir(),'ipm-checklist-access-'));let port;fs.copyFileSync(path.join(root,'tests/fixtures/legacy-seed.json'),path.join(dir,'seed.json'));const server=spawn(process.execPath,[path.join(root,'server.js')],{env:{...process.env,PORT:'0',ETS_DATA_DIR:dir},stdio:'pipe'});
+ try{port=await backendPort(server);
  const call=async(cookie,route,method='GET',body)=>{const r=await fetch('http://127.0.0.1:'+port+'/api'+route,{method,headers:{cookie:cookie||'','content-type':'application/json'},body:body===undefined?undefined:JSON.stringify(body)});return{status:r.status,data:await r.json(),cookie:r.headers.get('set-cookie')?.split(';')[0]}};
  const admin=(await call('','/login','POST',{user:'Stephan',id:'123',password:'Testing'})).cookie;assert.ok(admin);
  async function account(name,permissions,profileId){const role=profileId||(await call(admin,'/admin/profiles','POST',{name:'Role '+name,permissions})).data.id;const result=await call(admin,'/admin/users','POST',{name,username:name,userId:name,password:'Testing',profileId:role});assert.equal(result.status,201);return{id:result.data.id,role,cookie:(await call('','/login','POST',{user:name,id:name,password:'Testing'})).cookie};}
@@ -32,5 +33,5 @@ test('checklist API role matrix protects staff records, templates, exports and a
  assert.equal((await call(admin,'/admin/profiles/'+reviewer.role,'PATCH',{permissions:{reviewChecklists:false,exportData:true,viewAudit:true}})).status,200);assert.equal((await call(reviewer.cookie,'/checklists?scope=review')).status,403);assert.deepEqual((await call(reviewer.cookie,'/export.json')).data.checklistRuns,[]);assert.equal((await call(reviewer.cookie,'/bootstrap')).data.audit.some(e=>e.entityId===runA.id),false);
  template=(await call(admin,'/checklists/templates/'+template.id,'PATCH',{...payload,active:false,expectedRevision:template.revision})).data.template;assert.equal((await call(b.cookie,'/checklists/runs','POST',{templateId:template.id})).status,403);assert.equal((await call(b.cookie,'/checklists?scope=mine')).data.runs[0].id,runB.id,'Started snapshots remain available after archiving');
  assert.equal((await call(admin,'/admin/users/'+a.id+'/offboard','POST',{reason:'QA offboard'})).status,200);assert.equal((await call(a.cookie,'/bootstrap')).status,401);assert.equal((await call(a.cookie,'/checklists/runs/'+runA.id,'PATCH',{})).status,401);
- }finally{if(server.exitCode===null){server.kill();await new Promise(r=>server.once('exit',r));}fs.rmSync(dir,{recursive:true,force:true});}
+ }finally{if(server.exitCode===null){await stopBackend(server);}fs.rmSync(dir,{recursive:true,force:true});}
 });

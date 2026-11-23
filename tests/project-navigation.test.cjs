@@ -1,3 +1,4 @@
+const {backendPort,stopBackend}=require('./backend-lifecycle.cjs');
 const {test}=require('node:test'),assert=require('node:assert/strict');
 const WF=require('../workflow-runtime');
 test('configured workspaces preserve order and parent sign-off requires Approve for the named lead',()=>{
@@ -17,8 +18,8 @@ test('configured workspaces preserve order and parent sign-off requires Approve 
  template.nodes.reverse();assert.deepEqual(instance.nodes.map(n=>n.id),['start','work','child'],'Later template edits cannot rewrite a saved project');
 });
 test('task creation cannot bypass actual-hour permission and custom departments bind workflow tasks',async()=>{
- const fs=require('node:fs'),os=require('node:os'),path=require('node:path'),{spawn}=require('node:child_process');const root=path.resolve(__dirname,'..'),dir=fs.mkdtempSync(path.join(os.tmpdir(),'ipm-order-')),port=56500+Math.floor(Math.random()*300);fs.copyFileSync(path.join(root,'tests/fixtures/legacy-seed.json'),path.join(dir,'seed.json'));const server=spawn(process.execPath,[path.join(root,'server.js')],{env:{...process.env,PORT:String(port),ETS_DATA_DIR:dir},stdio:'ignore'});
- try{for(let n=0;n<70;n++){try{await fetch(`http://127.0.0.1:${port}/`);break}catch{await new Promise(r=>setTimeout(r,100))}}
+ const fs=require('node:fs'),os=require('node:os'),path=require('node:path'),{spawn}=require('node:child_process');const root=path.resolve(__dirname,'..'),dir=fs.mkdtempSync(path.join(os.tmpdir(),'ipm-order-'));let port;fs.copyFileSync(path.join(root,'tests/fixtures/legacy-seed.json'),path.join(dir,'seed.json'));const server=spawn(process.execPath,[path.join(root,'server.js')],{env:{...process.env,PORT:'0',ETS_DATA_DIR:dir},stdio:'pipe'});
+ try{port=await backendPort(server);
  const call=async(cookie,url,method='GET',body)=>{const r=await fetch(`http://127.0.0.1:${port}/api${url}`,{method,headers:{Cookie:cookie,'Content-Type':'application/json'},body:body?JSON.stringify(body):undefined});return {status:r.status,data:await r.json(),cookie:r.headers.get('set-cookie')?.split(';')[0]}};const admin=(await call('','/login','POST',{user:'Stephan',id:'123',password:'Testing'})).cookie;
  assert.equal((await call(admin,'/admin/profiles','POST',{name:'Misleading role control',permissions:{manageRoles:true}})).status,400);
  const profile=(await call(admin,'/admin/profiles','POST',{name:'Planner without actual hours',permissions:{assignTasks:true,createTasks:true,deleteProjects:true}})).data.id;await call(admin,'/admin/users','POST',{name:'Planner',username:'planner',userId:'planner',password:'Testing',profileId:profile});const planner=(await call('','/login','POST',{user:'planner',id:'planner',password:'Testing'})).cookie;
@@ -27,5 +28,5 @@ test('task creation cannot bypass actual-hour permission and custom departments 
  for(const route of ['/tasks','/work-packages'])assert.equal((await call(planner,route,'POST',{projectId:p.id,title:'Attempted actual hours',mhEstimate:4,mhActual:2})).status,403);
  const task=(await call(planner,'/tasks','POST',{projectId:p.id,title:'Future planned work',mhEstimate:4})).data.task;assert.equal(task.workflowNodeId,'custom-team-id');assert.equal((await call(planner,'/tasks/'+task.id,'PATCH',{status:'Completed'})).status,403,'Pending workflow cannot execute');assert.equal((await call(planner,'/tasks/'+task.id,'PATCH',{mhEstimate:6})).status,200,'Pending workflow can be planned');assert.equal((await call(planner,'/tasks/'+task.id,'PATCH',{mhActual:2})).status,403);
  const commercial=(await call(admin,'/projects','POST',{type:'commercial',workflowId:'commercial',title:'Not visible to planner'})).data.project;assert.equal((await call(planner,'/projects/'+commercial.id,'DELETE')).status,403,'Delete permission does not grant commercial visibility');
- }finally{if(server.exitCode===null){server.kill();await new Promise(r=>server.once('exit',r))}fs.rmSync(dir,{recursive:true,force:true})}
+ }finally{if(server.exitCode===null){await stopBackend(server)}fs.rmSync(dir,{recursive:true,force:true})}
 });
