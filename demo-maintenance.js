@@ -7,6 +7,13 @@ function clearProjects(db){
   // Legacy notifications are free text and cannot reliably be detached from deleted work.
   db.notifications=[];
 }
+function clearDemoHistory(db){
+  // A local-demo handover only. Preserve identities, client directories, access
+  // rules, workflow/checklist templates and setup markers; do not reseed them.
+  clearProjects(db);
+  for(const key of ['audit','feedback','checklistRuns','leave'])db[key]=[];
+  db.projectSequences={};
+}
 function prepareDemo(db,password){
   db.maintenance ||= {};
   if(db.maintenance.sysadmin1309Setup)return false;
@@ -33,4 +40,4 @@ function prepareDemo(db,password){
   db.maintenance.sysadmin1309Setup={at,removedProjects:removed};
   return true;
 }
-module.exports={clearProjects,prepareDemo};
+module.exports={clearProjects,clearDemoHistory,prepareDemo};
