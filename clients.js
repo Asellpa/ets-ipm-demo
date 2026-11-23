@@ -1,7 +1,7 @@
 const F=require('./field-access');
 function normalize(db){db.clients||=[];}
 function options(db,ps){return (ps.viewClients||ps.createCommercial||ps.editProjects&&ps.viewCommercial&&ps.viewRFQEngineering)?db.clients.filter(c=>c.active).map(c=>({id:c.id,name:c.name})):[];}
-function link(db,p){const match=db.clients.find(c=>c.active&&c.name.toLowerCase()===String(p.client||'').trim().toLowerCase());if(match){p.clientId=match.id;p.client=match.name}else if(p.clientId&&db.clients.find(c=>c.id===p.clientId)?.name!==p.client)delete p.clientId;}
+function link(db,p){const before=p.clientId;const match=db.clients.find(c=>c.active&&c.name.toLowerCase()===String(p.client||'').trim().toLowerCase());if(match){p.clientId=match.id;p.client=match.name}else if(p.clientId&&db.clients.find(c=>c.id===p.clientId)?.name!==p.client)delete p.clientId;if(before!==p.clientId)delete p.clientContactIds;}
 function summary(db,c,user,ps,WF,safeProject){
  const projects=db.projects.filter(p=>p.clientId===c.id&&(p.type!=='commercial'||ps.viewCommercial)&&(!F.mappedAccess(db,p,user,ps,WF).client||F.mappedAccess(db,p,user,ps,WF).client!=='hidden'));
  const readable=projects.filter(p=>p.type!=='commercial'||p.stage!=='RFQ'||ps.viewRFQEngineering);

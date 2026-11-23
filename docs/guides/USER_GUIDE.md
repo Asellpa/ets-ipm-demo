@@ -1,6 +1,6 @@
-# ETS IPM — user and administrator guide
+# ETS IPM user guide
 
-Maintained with the in-app Help & guides content. Instructions describe current supported actions; access depends on the assigned role and saved project policy.
+This guide describes the current demo. Actions depend on your assigned application and project permissions.
 
 ## Find your way around
 
@@ -45,6 +45,7 @@ Record dated time against your own assigned task.
 3. Future dates and combined totals above 24 hours per person/day are rejected. Logging above the task estimate requires an overrun reason.
 4. To correct an entry, select Correct entry and provide a reason. Original values remain in history. Setting hours to zero voids the entry. Completed work must be reopened by an authorised lead first.
 5. Reports → Time entries shows dated records and permitted exports. Historical opening balances are separate from dated entries. A formal timesheet approval process is not provided.
+6. A named project manager/supervisor with Manage and Approve Staff Time, or a staff administrator with that permission, can record work for the assigned worker. Enter an approval reason. The time belongs to the worker; your identity and approval reason are retained. Review & closure also lists project tasks with their time logs, subject to task permissions and locks.
 
 ## Create and link clients
 
@@ -52,8 +53,9 @@ Use a reusable client profile instead of repeatedly typing names.
 
 1. With Manage Clients permission, open Clients and create the client profile and contact information. Check for an existing profile before adding another.
 2. In the project’s configured client field or editable register column, select the client from the list and save.
-3. Client summaries show linked projects and permitted task-hour totals. They respect project, object, field and financial access; totals can differ between roles.
+3. Client summaries show projects for that client and permitted task-hour totals. They respect project, object, field and financial access; totals can differ between roles.
 4. Archive an unused client instead of removing its history. Existing links remain. Older text-only client values must be explicitly linked; matching text is not automatically a relationship.
+5. Within a client profile, add or edit several focal contacts if you have Manage Client Profiles permission. In a project, select its client first, expand Attachments & client focal contacts, tick the relevant people and Save focal contacts. Contacts can also be added there; archived contacts remain in existing selections until removed.
 
 ## Create a project
 
@@ -64,27 +66,26 @@ A saved workflow must exist before a project can be created.
 3. Create the record, then open it. Select the first visible workflow object and fill its configured fields. Choose Save object fields before leaving.
 4. The left pane follows the project’s saved workflow order. Existing projects preserve their workflow version when a template changes.
 5. Project owner and responsibility fields identify people; the named manager/supervisor controls sign-off authority. These are separate responsibilities.
-6. Use Linked projects to relate an Internal project and a Projects record. A link does not combine their tasks, hours, workflows or access.
 
 ## Add departments and tasks
 
 Departments group tasks; workflow objects control progression.
 
-1. Open the object configured with the Departments & tasks workspace. New projects do not receive automatic department placeholders.
+1. Open the object configured with the Departments & tasks workspace. New projects receive only the departments and default tasks saved in their selected workflow. A blank workflow department list stays blank.
 2. Choose Add department, select a standard option or enter a custom name, and save. Then add the department’s tasks with an active resource assignee, estimate and dates.
 3. Use the available Add control to choose the relevant record type. A department/work package groups work; a task records executable work and dated time.
 4. When removing a department, choose where its tasks should move: another department or Ungrouped tasks. Task IDs, recorded time and history are retained.
-5. Tasks & Departments provides a cross-project view. Ensure each task is linked to the intended saved workflow object.
+5. Tasks & Departments provides a cross-project view and is currently under construction. Ensure each task is linked to the intended saved workflow object.
+6. In the workflow designer, select the object with a Departments & tasks workspace. Configure default departments, task titles, estimates and default roles. New projects copy this configuration; existing project snapshots stay unchanged. Default roles leave tasks unassigned until an eligible named person is chosen.
 
 ## Attach and protect documents
 
-Files inherit project/object access and may have additional commercial restrictions.
+Open the project’s SharePoint document locations.
 
-1. Open the project and select its workflow object. Under Attachments, choose a file, select the appropriate visibility and choose Upload attachment.
-2. Supported types are PDF, PNG, JPG, TXT and CSV, up to 2 MB per file. Limits are 20 files per object and 20 MB per project. Closing the file chooser without selecting a file should leave the project open.
-3. Use Restricted commercial for budgets, pricing and financial documents, especially files with generic names. Follow object permissions does not mean only the users in a Team members field.
-4. Production uploads must pass malware scanning. If scanning is unavailable or a file is rejected, the upload is not accepted; contact your administrator rather than changing the extension.
-5. Downloads require access to the project, object and any financial restrictions. Uploads/removal also require appropriate edit access and an unlocked object. Removing a link does not define the backup retention policy.
+1. Open a project and expand Attachments & client focal contacts. Choose Attachments to open the first configured document location in a new browser tab.
+2. With project editing permission, choose Configure document links. Add one or more names and HTTPS links to the company’s SharePoint locations, then Save document links.
+3. These are project-specific links. SharePoint controls access to the actual files; application roles do not grant SharePoint access. Ask your administrator if access is denied.
+4. Existing uploaded files are retained by the backend; the current project interface uses document links. Ask your administrator about historical files before clearing demo records.
 
 ## Complete objects and sign off a project
 
@@ -102,7 +103,7 @@ Project completion requires an explicit decision by a named project lead.
 Compare scheduled work with available capacity.
 
 1. Open Resource Planning → Workload to review assigned, unassigned and future tasks. Task leads can set the assignee, estimate, start and due dates.
-2. Default allocations spread estimated hours across weekdays in the date range. Custom daily allocations must total the estimate and remain within its dates.
+2. Default allocations follow the working days and holidays saved in Working calendar. The daily reserve reduces available capacity. Custom daily allocations must total the estimate and remain within its dates.
 3. Recorded leave and weekend bookings appear as conflicts. The application does not automatically reschedule work around leave.
 4. Project task progress counts completed applicable tasks divided by all applicable tasks. Cancelled, No-Go and Not Required tasks are excluded. No applicable tasks shows 0%, not automatic completion.
 5. Estimated/actual hours are separate from count-based progress; workflow sign-off is also separate. The dedicated Sysadmin account has no resource capacity or time allocation.
@@ -162,3 +163,27 @@ Check saved state before retrying a change.
 4. If no checklist appears, confirm an active template is assigned to your current role and check the displayed date. Existing runs retain their original items.
 5. If you cannot sign in or the whole application is unavailable, contact your company’s support channel. In-app feedback requires a working signed-in session.
 6. Notifications are in-app; email delivery is not provided. Status/priority colours supplement labels: yellow hold, green ongoing/low priority, red lost/cancelled/high priority, teal complete, purple review and blue not started/normal priority.
+
+## Manage project types and register actions
+
+Customise register tabs without changing workflow templates.
+
+1. Open Project Settings → Project types. Add a name, choose an existing compatible default workflow and choose its access category. Save project types.
+2. Names appear as project-type tabs in the register. The commercial/internal access category cannot change after saving; renaming a type cannot bypass commercial protection. Archive a type to stop new projects while keeping existing records.
+3. Open Register configuration to set tab order, grid fields and editable values. Project actions controls the task summary and Edit action. Open a project through its title. Hiding an action is a display preference and does not grant or revoke a role permission.
+
+## Configure additional staff details
+
+Maintain private profile information separately from sign-in credentials.
+
+1. Open Manage Users → Configure profile fields. Add text or date fields such as Data package and save.
+2. Return to Manage users, edit a user and fill the new fields. Only users with Manage Users can access these administrative values.
+3. Archive fields to keep historical values while preventing further use in the editor. Custom profile fields never participate in authentication or permissions.
+
+## Set working days and reserve capacity
+
+Keep planned availability consistent with the company calendar.
+
+1. With Manage Working Calendar permission, open Resource Planning → Working calendar or Project Settings → Working calendar.
+2. Set Asia/Dubai, confirm the company’s working days, daily reserve and holiday dates, then save. No public-holiday dates are invented.
+3. The capacity board excludes configured non-working days, holidays and recorded leave. The reserve reduces planned available hours; it does not create actual time entries. Existing custom daily allocations remain visible as conflicts when they exceed capacity.

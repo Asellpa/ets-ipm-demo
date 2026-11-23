@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "node server.js",
     "start": "node server.js",
-    "test:api": "node --test tests/*.test.cjs",
+    "test:api": "node --test --test-concurrency=1 tests/*.test.cjs",
     "qa:react": "npm --prefix react run build && npm --prefix react run lint && npm run test:api",
     "test:e2e": "playwright test",
     "qa:full": "npm run qa:react && npm run test:e2e",
@@ -14,7 +14,9 @@
     "db:migrate": "node production/scripts/database.cjs migrate",
     "db:import": "node production/scripts/database.cjs import",
     "db:verify": "node production/scripts/database.cjs verify",
-    "test:production": "node --test tests/production*.test.cjs"
+    "test:production": "node --test tests/production*.test.cjs",
+    "demo:clear": "node scripts/clear-demo-projects.cjs",
+    "qa:performance": "node tests/performance-smoke.cjs"
   },
   "devDependencies": {
     "@playwright/test": "1.56.1"

@@ -1,4 +1,4 @@
-const PERMS = [
+const PERMS = ['manageBusinessRoles','manageCalendar','manageTime',
   'viewClients','manageClients','manageChecklists','reviewChecklists',
   'viewCommercial','createCommercial','viewCommercialFields','viewRFQEngineering','createEER',
   'editProjects','deleteProjects','createTasks','assignTasks','updateActualMH','raiseEscalations',
@@ -8,7 +8,7 @@ const PERMS = [
 const fullPermissions = () => Object.fromEntries(PERMS.map(k => [k, true]));
 const DEFAULT_PROFILES = [
   { id:'prof-admin', name:'System Administrator', description:'Full application and administration access', permissions:fullPermissions() },
-  { id:'prof-app-admin', name:'Admin', description:'Application administration without system administrator or role administration access', permissions:{...fullPermissions(),manageRoles:false} },
+  { id:'prof-app-admin', name:'Admin', description:'Application administration and business role management; protected system access excluded', permissions:{...fullPermissions(),manageRoles:false} },
   { id:'prof-senior', name:'Senior Management', description:'Full project, commercial, reporting and audit access', permissions:{
     viewClients:true,manageClients:true,manageChecklists:false,reviewChecklists:false,
     viewCommercial:true, createCommercial:true, viewCommercialFields:true, viewRFQEngineering:true, createEER:true,
@@ -29,4 +29,6 @@ const DEFAULT_PROFILES = [
     manageSettings:false, manageUsers:false, manageRoles:false
   }}
 ];
+DEFAULT_PROFILES.find(p=>p.id==='prof-ltse').permissions={...DEFAULT_PROFILES.find(p=>p.id==='prof-ltse').permissions,viewClients:true,manageClients:true,manageCalendar:true,manageTime:true};
+DEFAULT_PROFILES.find(p=>p.id==='prof-senior').permissions={...DEFAULT_PROFILES.find(p=>p.id==='prof-senior').permissions,manageCalendar:true,manageTime:true};
 module.exports={PERMS,DEFAULT_PROFILES,fullPermissions};

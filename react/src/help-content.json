@@ -52,7 +52,8 @@
       "Enter the work date, hours and a useful description, then choose Log time. Only the assignee with Update Actual MH access can log dated time against active work.",
       "Future dates and combined totals above 24 hours per person/day are rejected. Logging above the task estimate requires an overrun reason.",
       "To correct an entry, select Correct entry and provide a reason. Original values remain in history. Setting hours to zero voids the entry. Completed work must be reopened by an authorised lead first.",
-      "Reports → Time entries shows dated records and permitted exports. Historical opening balances are separate from dated entries. A formal timesheet approval process is not provided."
+      "Reports → Time entries shows dated records and permitted exports. Historical opening balances are separate from dated entries. A formal timesheet approval process is not provided.",
+      "A named project manager/supervisor with Manage and Approve Staff Time, or a staff administrator with that permission, can record work for the assigned worker. Enter an approval reason. The time belongs to the worker; your identity and approval reason are retained. Review & closure also lists project tasks with their time logs, subject to task permissions and locks."
     ]
   },
   {
@@ -63,8 +64,9 @@
     "steps": [
       "With Manage Clients permission, open Clients and create the client profile and contact information. Check for an existing profile before adding another.",
       "In the project’s configured client field or editable register column, select the client from the list and save.",
-      "Client summaries show linked projects and permitted task-hour totals. They respect project, object, field and financial access; totals can differ between roles.",
-      "Archive an unused client instead of removing its history. Existing links remain. Older text-only client values must be explicitly linked; matching text is not automatically a relationship."
+      "Client summaries show projects for that client and permitted task-hour totals. They respect project, object, field and financial access; totals can differ between roles.",
+      "Archive an unused client instead of removing its history. Existing links remain. Older text-only client values must be explicitly linked; matching text is not automatically a relationship.",
+      "Within a client profile, add or edit several focal contacts if you have Manage Client Profiles permission. In a project, select its client first, expand Attachments & client focal contacts, tick the relevant people and Save focal contacts. Contacts can also be added there; archived contacts remain in existing selections until removed."
     ]
   },
   {
@@ -77,8 +79,7 @@
       "Enter the project title and select an eligible named project manager or supervisor. Administration-only Sysadmin accounts cannot be project leads.",
       "Create the record, then open it. Select the first visible workflow object and fill its configured fields. Choose Save object fields before leaving.",
       "The left pane follows the project’s saved workflow order. Existing projects preserve their workflow version when a template changes.",
-      "Project owner and responsibility fields identify people; the named manager/supervisor controls sign-off authority. These are separate responsibilities.",
-      "Use Linked projects to relate an Internal project and a Projects record. A link does not combine their tasks, hours, workflows or access."
+      "Project owner and responsibility fields identify people; the named manager/supervisor controls sign-off authority. These are separate responsibilities."
     ]
   },
   {
@@ -87,24 +88,24 @@
     "category": "Projects",
     "summary": "Departments group tasks; workflow objects control progression.",
     "steps": [
-      "Open the object configured with the Departments & tasks workspace. New projects do not receive automatic department placeholders.",
+      "Open the object configured with the Departments & tasks workspace. New projects receive only the departments and default tasks saved in their selected workflow. A blank workflow department list stays blank.",
       "Choose Add department, select a standard option or enter a custom name, and save. Then add the department’s tasks with an active resource assignee, estimate and dates.",
       "Use the available Add control to choose the relevant record type. A department/work package groups work; a task records executable work and dated time.",
       "When removing a department, choose where its tasks should move: another department or Ungrouped tasks. Task IDs, recorded time and history are retained.",
-      "Tasks & Departments provides a cross-project view. Ensure each task is linked to the intended saved workflow object."
+      "Tasks & Departments provides a cross-project view and is currently under construction. Ensure each task is linked to the intended saved workflow object.",
+      "In the workflow designer, select the object with a Departments & tasks workspace. Configure default departments, task titles, estimates and default roles. New projects copy this configuration; existing project snapshots stay unchanged. Default roles leave tasks unassigned until an eligible named person is chosen."
     ]
   },
   {
     "id": "attachments",
     "title": "Attach and protect documents",
     "category": "Projects",
-    "summary": "Files inherit project/object access and may have additional commercial restrictions.",
+    "summary": "Open the project’s SharePoint document locations.",
     "steps": [
-      "Open the project and select its workflow object. Under Attachments, choose a file, select the appropriate visibility and choose Upload attachment.",
-      "Supported types are PDF, PNG, JPG, TXT and CSV, up to 2 MB per file. Limits are 20 files per object and 20 MB per project. Closing the file chooser without selecting a file should leave the project open.",
-      "Use Restricted commercial for budgets, pricing and financial documents, especially files with generic names. Follow object permissions does not mean only the users in a Team members field.",
-      "Production uploads must pass malware scanning. If scanning is unavailable or a file is rejected, the upload is not accepted; contact your administrator rather than changing the extension.",
-      "Downloads require access to the project, object and any financial restrictions. Uploads/removal also require appropriate edit access and an unlocked object. Removing a link does not define the backup retention policy."
+      "Open a project and expand Attachments & client focal contacts. Choose Attachments to open the first configured document location in a new browser tab.",
+      "With project editing permission, choose Configure document links. Add one or more names and HTTPS links to the company’s SharePoint locations, then Save document links.",
+      "These are project-specific links. SharePoint controls access to the actual files; application roles do not grant SharePoint access. Ask your administrator if access is denied.",
+      "Existing uploaded files are retained by the backend; the current project interface uses document links. Ask your administrator about historical files before clearing demo records."
     ]
   },
   {
@@ -128,7 +129,7 @@
     "summary": "Compare scheduled work with available capacity.",
     "steps": [
       "Open Resource Planning → Workload to review assigned, unassigned and future tasks. Task leads can set the assignee, estimate, start and due dates.",
-      "Default allocations spread estimated hours across weekdays in the date range. Custom daily allocations must total the estimate and remain within its dates.",
+      "Default allocations follow the working days and holidays saved in Working calendar. The daily reserve reduces available capacity. Custom daily allocations must total the estimate and remain within its dates.",
       "Recorded leave and weekend bookings appear as conflicts. The application does not automatically reschedule work around leave.",
       "Project task progress counts completed applicable tasks divided by all applicable tasks. Cancelled, No-Go and Not Required tasks are excluded. No applicable tasks shows 0%, not automatic completion.",
       "Estimated/actual hours are separate from count-based progress; workflow sign-off is also separate. The dedicated Sysadmin account has no resource capacity or time allocation."
@@ -203,6 +204,39 @@
       "If no checklist appears, confirm an active template is assigned to your current role and check the displayed date. Existing runs retain their original items.",
       "If you cannot sign in or the whole application is unavailable, contact your company’s support channel. In-app feedback requires a working signed-in session.",
       "Notifications are in-app; email delivery is not provided. Status/priority colours supplement labels: yellow hold, green ongoing/low priority, red lost/cancelled/high priority, teal complete, purple review and blue not started/normal priority."
+    ]
+  },
+  {
+    "id": "business-types",
+    "title": "Manage project types and register actions",
+    "category": "Administration",
+    "summary": "Customise register tabs without changing workflow templates.",
+    "steps": [
+      "Open Project Settings → Project types. Add a name, choose an existing compatible default workflow and choose its access category. Save project types.",
+      "Names appear as project-type tabs in the register. The commercial/internal access category cannot change after saving; renaming a type cannot bypass commercial protection. Archive a type to stop new projects while keeping existing records.",
+      "Open Register configuration to set tab order, grid fields and editable values. Project actions controls the task summary and Edit action. Open a project through its title. Hiding an action is a display preference and does not grant or revoke a role permission."
+    ]
+  },
+  {
+    "id": "staff-profile-fields",
+    "title": "Configure additional staff details",
+    "category": "Administration",
+    "summary": "Maintain private profile information separately from sign-in credentials.",
+    "steps": [
+      "Open Manage Users → Configure profile fields. Add text or date fields such as Data package and save.",
+      "Return to Manage users, edit a user and fill the new fields. Only users with Manage Users can access these administrative values.",
+      "Archive fields to keep historical values while preventing further use in the editor. Custom profile fields never participate in authentication or permissions."
+    ]
+  },
+  {
+    "id": "working-calendar",
+    "title": "Set working days and reserve capacity",
+    "category": "Resource planning",
+    "summary": "Keep planned availability consistent with the company calendar.",
+    "steps": [
+      "With Manage Working Calendar permission, open Resource Planning → Working calendar or Project Settings → Working calendar.",
+      "Set Asia/Dubai, confirm the company’s working days, daily reserve and holiday dates, then save. No public-holiday dates are invented.",
+      "The capacity board excludes configured non-working days, holidays and recorded leave. The reserve reduces planned available hours; it does not create actual time entries. Existing custom daily allocations remain visible as conflicts when they exceed capacity."
     ]
   }
 ]

@@ -56,7 +56,7 @@ export default function ProjectEditor({
   const [catalog, setCatalog] = useState<{
     protocolVersion?: number;
     defaultManagerId?: string;
-    projectTypes?: { id: string; workflowId: string }[];
+    projectTypes?: { id: string; name:string;kind:string;active:boolean;workflowId: string }[];
     workflows: { id: string; name: string; projectType?: string; description?: string }[];
     managers: { id: string; name: string }[];
   }>({ workflows: [], managers: [] });
@@ -64,7 +64,7 @@ export default function ProjectEditor({
   const [workflowId, setWorkflowId] = useState(project?.workflowId || '');
   const [managerId, setManagerId] = useState(project?.managerId || '');
   const [supervisorId, setSupervisorId] = useState(project?.supervisorId || '');
-  const createType = useRef(project?.type || initialType || (canCommercial ? 'commercial' : 'internal_eer'));
+  const createType = useRef(project?.projectTypeId || project?.type || initialType || (canCommercial ? 'commercial' : 'internal_eer'));
   const existing = Boolean(project);
   useEffect(() => {
     let active = true;
@@ -95,7 +95,7 @@ export default function ProjectEditor({
     };
   }, [existing]);
   const [type, setType] = useState(
-    project?.type || initialType || (canCommercial ? 'commercial' : 'internal_eer'),
+    createType.current,
   );
   const [values, setValues] = useState<Record<string, string>>(() => {
     const initial: Record<string, string> = {
@@ -131,7 +131,7 @@ export default function ProjectEditor({
       if (!managerId && !supervisorId)
         throw new Error('Assign a project manager or supervisor for parent sign-off');
       const payload: Record<string, string> = {
-        type,
+        type:catalog.projectTypes?.find(t=>t.id===type)?.kind||type,projectTypeId:type,
         ...(!project||!project.fieldAccess?.title||project.fieldAccess.title==='edit'?{title:values.title.trim()||'Untitled project'}:{}),
         ...(!project
           ? { workflowId, managerId, supervisorId }
@@ -184,8 +184,7 @@ export default function ProjectEditor({
             );
           }}
         >
-          {canCommercial && <option value="commercial">Projects</option>}
-          {canEer && <option value="internal_eer">Internal</option>}
+          {(catalog.projectTypes||[]).filter(t=>(t.active!==false||t.id===type)&&((t.kind||t.id)==='commercial'?canCommercial:canEer)).map(t=><option key={t.id} value={t.id}>{t.name}</option>)}
         </select>
       </label>
       <label>
@@ -201,7 +200,7 @@ export default function ProjectEditor({
           {project?.workflowId && !catalog.workflows.some((w) => w.id === project.workflowId) && (
             <option value={project.workflowId}>Saved project workflow</option>
           )}
-          {catalog.workflows.filter(w=>!w.projectType||w.projectType===type).map((w) => (
+          {catalog.workflows.filter(w=>!w.projectType||w.projectType===(catalog.projectTypes?.find(t=>t.id===type)?.kind||type)).map((w) => (
             <option key={w.id} value={w.id}>
               {w.name}
             </option>

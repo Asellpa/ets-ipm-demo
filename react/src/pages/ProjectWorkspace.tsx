@@ -2,7 +2,6 @@ import {isTaskAssignee,sessionUser} from '../api';
 import ToneSelect from '../components/ToneSelect';
 import {taskStatuses} from '../project-utils';
 import TimeLog from '../components/TimeLog';
-import ObjectAttachments from '../components/ObjectAttachments';
 import { Fragment, useCallback, useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import { request, type Project, type Session, type Task } from '../api';
 import type { ObjectField } from './WorkflowFieldsEditor';
@@ -84,7 +83,8 @@ function ObjectDetails({
   const [assignee, setAssignee] = useState('Unassigned');
   const [estimate, setEstimate] = useState(0);
   const [existing, setExisting] = useState('');
-  const linked = data.tasks.filter((t) => node.tasks.includes(t.id));
+  const review = !node.parent && /review|closure/i.test(node.name);
+  const linked = data.tasks.filter((t) => review ? t.projectId===project.id&&Number(t.level||3)>=3 : node.tasks.includes(t.id));
   const unlinked = data.tasks.filter(
     (t) => t.projectId === project.id && !t.workflowNodeId && Number(t.level || 3) >= 3,
   );
@@ -187,7 +187,7 @@ function ObjectDetails({
             void mutate('save');
           }}
         >
-          {node.fields.map((field,index) => (
+          {node.fields.filter(field=>field.projectField!=='department'||field.required).map((field,index) => (
             <Fragment key={field.id}>{field.section!==node.fields[index-1]?.section&&field.section&&<h3 className="object-field-section">{field.section}</h3>}<label>
               {field.label}
               {field.required ? ' *' : ''}
@@ -241,7 +241,7 @@ function ObjectDetails({
               )}
             </label></Fragment>
           ))}
-          {node.canEdit && <div className="form-actions"><button disabled={busy||!changed}>Save object fields</button>{saved&&!changed&&<span role="status">Object fields saved</span>}</div>}
+          {node.canEdit && <div className="form-actions"><button className="primary" disabled={busy||!changed}>Save object fields</button>{saved&&!changed&&<span role="status">Object fields saved</span>}</div>}
         </form>
       )}
       {node.decision && <p role="status">Decision: {node.decision}</p>}
@@ -262,7 +262,7 @@ function ObjectDetails({
           {node.signedOffAt ? ' on ' + new Date(node.signedOffAt).toLocaleString() : ''}.
         </p>
       )}
-      {node.view!=='departments'&&<>      {(linked.length>0||((node.canEdit||node.canPlan)&&data.permissions.createTasks))&&<h3>Tasks for this object</h3>}
+      {node.view!=='departments'&&(linked.length>0||node.completion==='tasks')&&<>      {(linked.length>0||((node.canEdit||node.canPlan)&&data.permissions.createTasks))&&<h3>{review?'Project task hours and status':'Tasks for this object'}</h3>}
       {linked.length ? (
         linked.map((task) => (
           <TaskRow
@@ -270,7 +270,7 @@ function ObjectDetails({
             task={task}
             data={data}
             parentBusy={busy}
-            canLog={sessionUser(data)?.resourceEnabled!==false && isTaskAssignee(task,data) && !!data.permissions.updateActualMH && !task.workflowLocked && !busy}
+            canLog={(!!data.permissions.manageTime||sessionUser(data)?.resourceEnabled!==false && isTaskAssignee(task,data)) && !!data.permissions.updateActualMH && !task.workflowLocked && !busy}
             canUpdate={!task.workflowLocked&&(!!data.permissions.assignTasks||isTaskAssignee(task,data))}
             onSaved={onChange}
           />
@@ -278,7 +278,7 @@ function ObjectDetails({
       ) : (
         null
       )}
-      {(node.canEdit || node.canPlan) && data.permissions.createTasks && (
+      {!review && (node.canEdit || node.canPlan) && data.permissions.createTasks && (
         <details className="project-task-add">
           <summary>Add a task to this object</summary>
           <form className="editor" onSubmit={(e) => void addTask(e)}>
@@ -412,7 +412,7 @@ function ObjectDetails({
           {error}
         </p>
       )}
-      <ObjectAttachments key={project.id+node.id} projectId={project.id} nodeId={node.id} canEdit={node.canEdit&&!busy} canViewCommercial={!!data.permissions.viewCommercialFields} onChanged={onChange}/>
+
       {node.history?.length > 0 && (
         <details className="object-history">
           <summary>Object history ({node.history.length})</summary>
@@ -436,7 +436,6 @@ export default function ProjectWorkspace({
   onRefresh,
   onDirtyChange,
   renderTools,
-  linkedProjects,
 }: {
   project: Project;
   initialNodeId?: string;
@@ -446,14 +445,13 @@ export default function ProjectWorkspace({
   onRefresh: () => Promise<void>;
   onDirtyChange?: (dirty:boolean) => void;
   renderTools?: (node:WorkNode,refresh:()=>Promise<void>) => ReactNode;
-  linkedProjects?: ReactNode;
 }) {
   const [instance, setInstance] = useState<Instance | null>(null);
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState(initialNodeId||'');
-  const [showLinks,setShowLinks]=useState(false);const dirty=useRef(false);
+  const dirty=useRef(false);
   const reportDirty=useCallback((value:boolean)=>{dirty.current=value;onDirtyChange?.(value)},[onDirtyChange]);
-  function navigate(id?:string){if(id===selected&&!showLinks)return;if(dirty.current&&!window.confirm('Discard unsaved object fields or comment?'))return;reportDirty(false);setShowLinks(!id);if(id)setSelected(id);const body=document.querySelector('.project-popup-body');if(body)body.scrollTop=0;}
+  function navigate(id:string){if(id===selected)return;if(dirty.current&&!window.confirm('Discard unsaved object fields or comment?'))return;reportDirty(false);setSelected(id);const body=document.querySelector('.project-popup-body');if(body)body.scrollTop=0;}
   const [error, setError] = useState('');
   const [templates, setTemplates] = useState<{ id: string; name: string }[]>([]);
   const [template, setTemplate] = useState('');
@@ -619,10 +617,10 @@ export default function ProjectWorkspace({
               {ordered.map((item) => (
                 <button
                   key={item.id}
-                  className={!showLinks&&selected === item.id ? 'selected' : ''}
+                  className={selected === item.id ? 'selected' : ''}
                   style={{ paddingLeft: 12 + depth(item) * 16 }}
                   aria-label={item.name}
-                  aria-current={!showLinks&&selected === item.id ? 'step' : undefined}
+                  aria-current={selected === item.id ? 'step' : undefined}
                   onClick={() => navigate(item.id)}
                 >
                   <span>{item.name}</span>
@@ -632,10 +630,9 @@ export default function ProjectWorkspace({
                   </small>
                 </button>
               ))}
-              {linkedProjects&&<button className={'project-utility '+(showLinks?'selected':'')} aria-label="Linked projects" onClick={()=>navigate()}><span>Linked projects</span><small>Related records</small></button>}
               <details className="workflow-version"><summary>Workflow version</summary><p>{instance.version}</p><p>Object order, fields and access use this project’s saved configuration. Later template edits apply to new projects.</p></details>
             </nav>
-            {showLinks? <section className="panel project-object">{linkedProjects}</section> : node ? (
+            {node ? (
               <ObjectDetails
                 key={node.id + ':' + node.status}
                 node={node}

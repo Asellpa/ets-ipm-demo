@@ -6,7 +6,7 @@ async function handleTimeCorrections(ctx){
  if(req.method!=='PATCH'){send(res,405,{error:'Use PATCH to correct a time entry'});return true;}
  const task=db.tasks.find(t=>t.id===decodeURIComponent(match[1])),p=task&&project(db,task.projectId),entry=task?.timeEntries?.find(e=>e.id===decodeURIComponent(match[2]));
  if(!entry||!canReadTask(task,ps,p,db,user)){send(res,404,{error:'Time entry not found or access restricted'});return true;}
- const lead=ps.assignTasks&&[p.managerId,p.supervisorId].includes(user.id);
+ const lead=ps.manageTime&&([p.managerId,p.supervisorId].includes(user.id)||ps.manageTeam||ps.manageUsers);
  if(!ps.updateActualMH||(entry.userId!==user.id&&!lead&&user.profileId!=='prof-admin')){send(res,403,{error:'Only the entry author, assigned project lead or System Administrator can correct time'});return true;}
  if(['Completed','Lost/Cancelled','Not Required','No-Go (Client)','No-Go (DOA)','Lost (DOA)'].includes(task.status)||!WF.canUpdateTask(db,p,user,ps,task)){send(res,403,{error:'Reopen completed work or wait for workflow prerequisites before correcting time'});return true;}
  const b=await body(req);let today;try{today=workToday(b.timeZone||'UTC')}catch(e){send(res,422,{error:e.message});return true;}const reason=String(b.reason||'').trim(),description=String(b.description||'').trim();

@@ -137,6 +137,7 @@ function validate(w) {
     return "Workflow must contain 1–200 objects";
   for(const view of ['departments','hours'])if(nodes.filter(n=>n.view===view).length>1)return 'Use only one '+view+' workspace per workflow';
   for (const n of nodes) {
+    if(n.departments!==undefined&&(!Array.isArray(n.departments)||n.view!=='departments'||n.departments.length>30||n.departments.some(d=>!d||typeof d.name!=='string'||!d.name.trim()||d.name.length>120||!Array.isArray(d.tasks)||d.tasks.length>100||d.tasks.some(t=>!t||typeof t.title!=='string'||!t.title.trim()||t.title.length>200||!Number.isFinite(t.hours)||t.hours<0||t.hours>10000||typeof t.roleId!=='string'))||new Set(n.departments.map(d=>d.name.trim().toLowerCase())).size!==n.departments.length))return 'Configure unique department names, task titles, estimated hours and default roles';
     if(!['fields','departments','hours'].includes(n.view))return 'Invalid object workspace';
     const fieldError = F.validateSchema({...n,financialRestricted:financialNode(nodes,n)});
     if (fieldError) return fieldError;
