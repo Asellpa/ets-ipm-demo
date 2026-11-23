@@ -619,6 +619,6 @@ const server=http.createServer(async(req,res)=>{
  }catch(e){res._bufferResponse=false;console.error(JSON.stringify({event:'transaction_error',requestId:req.requestId,code:e.code||e.name}));if(!res.headersSent)send(res,e.statusCode||(e instanceof SyntaxError?400:e.code==='23505'?409:503),{error:e.statusCode?e.message:e instanceof SyntaxError?'Invalid JSON request body':e.code==='23505'?'Record conflicts with an existing unique value':'Service unavailable. Retry later or contact your administrator.'});}
 });
 server.requestTimeout=30000;server.headersTimeout=15000;server.keepAliveTimeout=5000;
-async function start(){if(store)await store.check();ready=true;server.listen(PORT,process.env.HOST||'0.0.0.0',()=>console.log(`ETS IPM running on port ${PORT}`));}
+async function start(){if(store)await store.check();ready=true;server.listen(PORT,process.env.HOST||'0.0.0.0',()=>console.log(`ETS IPM running on port ${server.address().port}`));}
 start().catch(e=>{console.error('Startup failed: '+e.message);process.exit(1);});
 for(const signal of ['SIGTERM','SIGINT'])process.on(signal,()=>{ready=false;server.close(async()=>{if(store)await store.close();process.exit(0);});setTimeout(()=>process.exit(1),15000).unref();});

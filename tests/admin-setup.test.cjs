@@ -8,9 +8,10 @@ test('one-time demo setup, private credential hash, owner validation and Admin p
  assert.equal(prepareDemo(db,password),true);assert.equal(db.projects.length,0);assert.equal(db.tasks.length,0);assert.equal(db.projectLinks.length,0);assert.equal(db.feedback[0].id,'keep-feedback');assert.equal(db.leave[0].id,'keep-leave');
  const sysadmin=db.users.find(u=>u.username==='sysadmin');assert.equal(sysadmin.userId,'1309');assert.equal(sysadmin.profileId,'prof-admin');assert.ok(sysadmin.passwordSalt);assert.ok(!JSON.stringify(db).includes(password));
  db.projects.push({id:'new-after-setup'});assert.equal(prepareDemo(db,'ignored-on-repeat'),false);assert.equal(db.projects.length,1,'Rerunning setup must preserve subsequent projects');db.projects=[];
- fs.writeFileSync(file,JSON.stringify(db));const port=58000+Math.floor(Math.random()*900),server=spawn(process.execPath,[path.join(root,'server.js')],{env:{...process.env,PORT:String(port),ETS_DATA_DIR:dir},stdio:'ignore'});
+ fs.writeFileSync(file,JSON.stringify(db));let port,diagnostic='';const server=spawn(process.execPath,[path.join(root,'server.js')],{env:{...process.env,PORT:'0',ETS_DATA_DIR:dir},stdio:['ignore','pipe','pipe']});server.stderr.on('data',chunk=>{diagnostic+=chunk});
+ const ready=new Promise((resolve,reject)=>{let output='';server.stdout.on('data',chunk=>{output+=chunk;const m=output.match(/running on port (\d+)/);if(m){port=Number(m[1]);resolve()}});server.once('error',reject);server.once('exit',code=>reject(Error('Isolated backend exited '+code+': '+diagnostic)));});
  try{
-  for(let i=0;i<70;i++){try{await fetch(`http://127.0.0.1:${port}/`);break}catch{await new Promise(r=>setTimeout(r,100))}}
+  let timer;try{await Promise.race([ready,new Promise((_,reject)=>{timer=setTimeout(()=>reject(Error('Isolated backend did not become ready: '+diagnostic)),15000)})])}finally{clearTimeout(timer)}
   const call=async(cookie,route,method='GET',body)=>{const r=await fetch(`http://127.0.0.1:${port}/api${route}`,{method,headers:{Cookie:cookie,'Content-Type':'application/json'},body:body?JSON.stringify(body):undefined});return {status:r.status,data:await r.json(),cookie:r.headers.get('set-cookie')?.split(';')[0]}};
   const login=await call('','/login','POST',{user:'sysadmin',id:'1309',password});assert.equal(login.status,200);const system=login.cookie,admin=(await call('','/login','POST',{user:'Stephan',id:'123',password:'Testing'})).cookie;assert.ok(admin);
   const bootstrap=(await call(admin,'/bootstrap')).data;assert.equal(bootstrap.permissions.manageUsers,true);assert.equal(bootstrap.permissions.manageRoles,false);assert.equal(bootstrap.projects.length,0);
@@ -37,5 +38,5 @@ test('one-time demo setup, private credential hash, owner validation and Admin p
   assert.equal((await call(admin,'/projects/'+p.id+'/workflow/nodes/overview','PATCH',{action:'save',expectedRevision:flow.revision,values:{[owner.id]:'Nonexistent'}})).status,422);
   assert.equal((await call(admin,'/projects/'+p.id+'/workflow/nodes/overview','PATCH',{action:'save',expectedRevision:flow.revision,values:{[owner.id]:'Stephan'}})).status,200);
   assert.equal((await call(system,'/demo/clear-records','POST',{})).status,200);assert.equal((await call(system,'/bootstrap')).data.projects.length,0);const saved=JSON.parse(fs.readFileSync(file));assert.equal(saved.users.find(u=>u.username==='sysadmin').passwordHash,sysadmin.passwordHash);assert.equal(saved.feedback[0].id,'keep-feedback');assert.equal(saved.leave[0].id,'keep-leave');assert.ok(fs.readdirSync(dir).some(n=>n.startsWith('db.json.backup-')));
- }finally{server.kill();await new Promise(r=>server.once('exit',r));fs.rmSync(dir,{recursive:true,force:true})}
+ }finally{if(server.exitCode===null&&server.signalCode===null){server.kill();await new Promise(r=>server.once('exit',r));}fs.rmSync(dir,{recursive:true,force:true})}
 });
