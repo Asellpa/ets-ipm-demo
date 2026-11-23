@@ -1,6 +1,6 @@
 const{test}=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),os=require('node:os'),path=require('node:path'),{spawn}=require('node:child_process');
 test('appearance preferences are authenticated, account-scoped, validated and durable across restart',async()=>{
- const root=path.join(__dirname,'..'),dir=fs.mkdtempSync(path.join(os.tmpdir(),'ipm-preferences-')),port=54000+Math.floor(Math.random()*500);fs.copyFileSync(path.join(root,'data/seed.json'),path.join(dir,'seed.json'));let server;
+ const root=path.join(__dirname,'..'),dir=fs.mkdtempSync(path.join(os.tmpdir(),'ipm-preferences-')),port=54000+Math.floor(Math.random()*500);fs.copyFileSync(path.join(root,'tests/fixtures/legacy-seed.json'),path.join(dir,'seed.json'));let server;
  async function start(){server=spawn(process.execPath,[path.join(root,'server.js')],{env:{...process.env,PORT:String(port),ETS_DATA_DIR:dir},stdio:'ignore'});for(let i=0;i<100;i++){try{if((await fetch('http://127.0.0.1:'+port+'/health/ready')).ok)return}catch{}await new Promise(r=>setTimeout(r,50))}throw Error('Server failed to start')}
  async function stop(){if(server?.exitCode===null){server.kill();await new Promise(r=>server.once('exit',r))}}
  async function call(cookie,route,method='GET',body){const r=await fetch('http://127.0.0.1:'+port+'/api'+route,{method,headers:{cookie:cookie||'','content-type':'application/json'},body:body===undefined?undefined:JSON.stringify(body)});return{status:r.status,data:await r.json(),cookie:r.headers.get('set-cookie')?.split(';')[0]}}

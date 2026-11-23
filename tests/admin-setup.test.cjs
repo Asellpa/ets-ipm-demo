@@ -2,7 +2,7 @@ const {test}=require('node:test'),assert=require('node:assert/strict'),fs=requir
 const {prepareDemo}=require('../demo-maintenance');
 test('one-time demo setup, private credential hash, owner validation and Admin privilege boundaries',async()=>{
  const root=path.resolve(__dirname,'..'),dir=fs.mkdtempSync(path.join(os.tmpdir(),'ipm-admin-')),file=path.join(dir,'db.json');
- const db=JSON.parse(fs.readFileSync(path.join(root,'data/seed.json'),'utf8'));
+ const db=JSON.parse(fs.readFileSync(path.join(root,'tests/fixtures/legacy-seed.json'),'utf8'));
  db.feedback=[{id:'keep-feedback'}];db.leave=[{id:'keep-leave'}];db.projectLinks=[{projectId:'old'}];
  const password=crypto.randomBytes(18).toString('hex');
  assert.equal(prepareDemo(db,password),true);assert.equal(db.projects.length,0);assert.equal(db.tasks.length,0);assert.equal(db.projectLinks.length,0);assert.equal(db.feedback[0].id,'keep-feedback');assert.equal(db.leave[0].id,'keep-leave');

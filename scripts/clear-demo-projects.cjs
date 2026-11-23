@@ -8,7 +8,7 @@ async function main(){
  const running=await new Promise(resolve=>{const s=net.connect({host:'127.0.0.1',port:Number(process.env.PORT||5174)});s.setTimeout(1000);s.once('connect',()=>{s.destroy();resolve(true)});s.once('error',()=>resolve(false));s.once('timeout',()=>{s.destroy();resolve(false)})});if(running)throw Error('Stop the backend before clearing demo projects');
  const original=fs.readFileSync(file,'utf8'),db=JSON.parse(original),workflow=JSON.stringify(db.workflowConfig),backup=file+'.before-project-clear-'+Date.now();
  clearProjects(db);if(JSON.stringify(db.workflowConfig)!==workflow)throw Error('Workflow preservation check failed');
- db.settings||={};db.settings.workCalendar||={timeZone:'Asia/Dubai',workingDays:[1,2,3,4,5],reserveHours:1,holidays:[]};
+ db.settings||={};db.settings.taskCompletionRequiresTime??=true;db.settings.workCalendar||={timeZone:'Asia/Dubai',workingDays:[1,2,3,4,5],reserveHours:1,holidays:[]};
  if(fs.readFileSync(file,'utf8')!==original)throw Error('Database changed during maintenance');
  fs.writeFileSync(backup,original,{mode:0o600,flag:'wx'});const temp=file+'.clear-'+process.pid;fs.writeFileSync(temp,JSON.stringify(db,null,2),{mode:0o600,flag:'wx'});fs.renameSync(temp,file);
  console.log('Demo projects cleared. Accounts and workflows preserved. Private backup: '+backup);

@@ -25,7 +25,7 @@ test('PostgreSQL migration, rollback, unique/FK constraints, concurrent writes a
 });
 test('PostgreSQL-backed API persists authorised writes and revokes local sessions across server restart',{skip:!url},async()=>{
  const old=process.env.DATABASE_URL;process.env.DATABASE_URL=url;const pool=Pg.pool(),temp=fs.mkdtempSync(path.join(os.tmpdir(),'ipm-pg-api-'));let child;
- const seed=JSON.parse(fs.readFileSync(path.join(__dirname,'../data/seed.json'))),crypto=require('node:crypto');
+ const seed=JSON.parse(fs.readFileSync(path.join(__dirname,'fixtures/legacy-seed.json'))),crypto=require('node:crypto');
  // Use isolated known credentials only; never create these on production.
  seed.profiles=require('../auth-profiles').DEFAULT_PROFILES;seed.users.forEach((u,i)=>{u.id||='qa-u'+i;u.username=u.name;u.userId=String(i+1);u.profileId='prof-admin';u.active=true;u.email='qa-'+i+'@example.test';u.passwordSalt='qa-salt';u.passwordHash=crypto.scryptSync('QA-only-password',u.passwordSalt,64).toString('hex');});
  async function start(mode='local'){child=spawn(process.execPath,['server.js'],{cwd:path.join(__dirname,'..'),env:{...process.env,DATABASE_URL:url,PORT:'5194',ETS_DATA_DIR:temp,AUTH_MODE:mode,NODE_ENV:mode==='proxy'?'production':'test',IDENTITY_PROXY_SECRET:'x'.repeat(32),APP_ORIGINS:'https://ipm.example.test',ETS_FILE_DIR:temp,CLAMD_HOST:'127.0.0.1'},stdio:['ignore','pipe','pipe']});for(let i=0;i<100;i++){if(child.exitCode!==null)throw Error('API exited before readiness');try{if((await fetch('http://127.0.0.1:5194/health/ready')).ok)return;}catch{}await new Promise(r=>setTimeout(r,50));}throw Error('API readiness timeout');}

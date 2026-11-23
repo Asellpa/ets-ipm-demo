@@ -1,4 +1,4 @@
-import {isTaskAssignee,canRecordTaskTime} from '../api';
+import {isTaskAssignee,canRecordTaskTime,canApproveTaskTime} from '../api';
 import ToneSelect from '../components/ToneSelect';
 import {taskStatuses} from '../project-utils';
 import TimeLog from '../components/TimeLog';
@@ -47,7 +47,7 @@ type Instance = {
 function TaskRow({task,data,canUpdate,canLog,parentBusy,onSaved}:{task:Task;data:Session;canUpdate:boolean;canLog:boolean;parentBusy:boolean;onSaved:()=>Promise<void>}){
  const [busy,setBusy]=useState(false);const[error,setError]=useState('');
  async function setStatus(status:string){setBusy(true);setError('');try{await request('/tasks/'+encodeURIComponent(task.id),{method:'PATCH',body:JSON.stringify({status})});await onSaved()}catch(e){setError((e as Error).message)}finally{setBusy(false)}}
- return <div className="linked-task"><div className="project-task-row"><div><strong>{task.title}</strong><small>{task.assignee} · {task.mhEstimate||0} estimated hours</small></div><label>Status<ToneSelect kind={'status'} aria-label={'Status for '+task.title} disabled={!canUpdate||busy||parentBusy} value={task.status||'To Do'} onChange={e=>void setStatus(e.target.value)}>{[...new Set([...taskStatuses,task.status||'To Do'])].map(status=><option key={status}>{status}</option>)}</ToneSelect></label></div>{error&&<p className="error" role="alert">{error}</p>}{(canLog||!!task.timeEntries?.length)&&<TimeLog task={task} data={data} canLog={canLog} onSaved={onSaved}/>}</div>;
+ return <div className="linked-task"><div className="project-task-row"><div><strong>{task.title}</strong><small>{task.assignee} · {task.mhEstimate||0} estimated hours</small></div><label>Status<ToneSelect kind={'status'} aria-label={'Status for '+task.title} disabled={!canUpdate||busy||parentBusy} value={task.status||'To Do'} onChange={e=>void setStatus(e.target.value)}>{[...new Set([...taskStatuses,task.status||'To Do'])].map(status=><option key={status}>{status}</option>)}</ToneSelect></label></div>{error&&<p className="error" role="alert">{error}</p>}{(canLog||!!task.timeEntries?.length||canApproveTaskTime(task,data)||!!task.zeroHoursApproval)&&<TimeLog task={task} data={data} canLog={canLog} onSaved={onSaved}/>}</div>;
 }
 function ObjectDetails({
   node,
@@ -456,7 +456,7 @@ export default function ProjectWorkspace({
   const [selected, setSelected] = useState(initialNodeId||'');
   const dirty=useRef(false);
   const reportDirty=useCallback((value:boolean)=>{dirty.current=value;onDirtyChange?.(value)},[onDirtyChange]);
-  function navigate(id:string){if(busy||id===selected)return;if(dirty.current&&!window.confirm('Discard unsaved object fields or comment?'))return;reportDirty(false);setSelected(id);const body=document.querySelector('.project-popup-body');if(body)body.scrollTop=0;}
+  function navigate(id:string){if(busy||id===selected)return;if((dirty.current||!!document.querySelector('.project-object [data-unsaved=true]'))&&!window.confirm('Discard unsaved object fields, time entries or comment?'))return;reportDirty(false);setSelected(id);const body=document.querySelector('.project-popup-body');if(body)body.scrollTop=0;}
   const [error, setError] = useState('');
   const [templates, setTemplates] = useState<{ id: string; name: string }[]>([]);
   const [template, setTemplate] = useState('');

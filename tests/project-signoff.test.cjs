@@ -1,7 +1,7 @@
 const {test}=require('node:test'),assert=require('node:assert/strict');
 const fs=require('node:fs'),os=require('node:os'),path=require('node:path'),{spawn}=require('node:child_process');
 test('final project sign-off requires named approver, completed work, revision and comment; reopening withdraws it',async()=>{
- const root=path.resolve(__dirname,'..'),dir=fs.mkdtempSync(path.join(os.tmpdir(),'ipm-signoff-')),port=57000+Math.floor(Math.random()*300);fs.copyFileSync(path.join(root,'data/seed.json'),path.join(dir,'seed.json'));const server=spawn(process.execPath,[path.join(root,'server.js')],{env:{...process.env,PORT:String(port),ETS_DATA_DIR:dir},stdio:'ignore'});
+ const root=path.resolve(__dirname,'..'),dir=fs.mkdtempSync(path.join(os.tmpdir(),'ipm-signoff-')),port=57000+Math.floor(Math.random()*300);fs.copyFileSync(path.join(root,'tests/fixtures/legacy-seed.json'),path.join(dir,'seed.json'));const server=spawn(process.execPath,[path.join(root,'server.js')],{env:{...process.env,PORT:String(port),ETS_DATA_DIR:dir},stdio:'ignore'});
  try{for(let n=0;n<70;n++){try{await fetch(`http://127.0.0.1:${port}/`);break}catch{await new Promise(r=>setTimeout(r,100))}}
  const call=async(cookie,url,method='GET',body)=>{const r=await fetch(`http://127.0.0.1:${port}/api${url}`,{method,headers:{Cookie:cookie,'Content-Type':'application/json'},body:body?JSON.stringify(body):undefined});return {status:r.status,data:await r.json(),cookie:r.headers.get('set-cookie')?.split(';')[0]}};
  const admin=(await call('','/login','POST',{user:'Stephan',id:'123',password:'Testing'})).cookie,boot=(await call(admin,'/bootstrap')).data;

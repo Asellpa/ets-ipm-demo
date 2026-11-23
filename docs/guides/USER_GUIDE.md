@@ -198,3 +198,13 @@ A checklist tick does not approve a capacity conflict.
 3. Users with Review capacity warnings open Resource Planning → Capacity warnings to review staff warnings. Review allocations, assignments or availability first; the application does not reschedule work automatically.
 4. Once no three-day overbooking streak remains in the current window, select Refresh warnings, enter a resolution reason and Resolve warning. The application records who approved the resolution and preserves staff blocker notes.
 5. Unresolved warnings create another in-app reminder on the next day when the app is opened or refreshed. No external message or background rescheduling is performed.
+
+## Complete a task with recorded or approved zero hours
+
+Task completion requires recorded work or a reviewed exception.
+
+1. Record dated time in the task’s time log before choosing Completed. Direct changes to an actual-hour total do not replace a time entry.
+2. If no work was performed, ask a permitted project lead or staff administrator to open the task’s time log, enter a Zero-hours reason and choose Approve zero hours. Then mark the task Completed. Approval does not create manhours for the approver.
+3. The approval retains the approver, reason and time. Changing the task’s scope, estimate, assignee or workflow object invalidates that approval. Reopening a completed task also withdraws it.
+4. Project Settings → Task rules displays the company policy. Required time is enabled by default. Existing completed history is retained. Workflow locks and named parent/project sign-offs continue to apply.
+5. When importing actual hours, include Work Date and Time approval reason. Completed zero-hour rows need a Zero-hours reason. The importing user must have staff-time approval authority. These records remain auditable and cannot bypass daily limits.

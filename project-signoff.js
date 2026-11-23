@@ -6,6 +6,7 @@ function readiness(db,p,user,ps,WF){
  if(instance.nodes.filter(n=>!n.parent).some(n=>WF.access(instance,n,p,user,ps)!=='approve'))return {status:403,error:'Approve access is required for every parent object'};
  if(instance.nodes.some(n=>instance.states[n.id].status!=='Completed'))return {status:409,error:'Complete and sign off all workflow objects before signing off the project'};
  if(db.tasks.some(t=>t.projectId===p.id&&Number(t.level||3)>=3&&!['Completed','Not Required','Lost/Cancelled','No-Go (Client)','No-Go (DOA)','Lost (DOA)'].includes(t.status)))return {status:409,error:'Complete or cancel all applicable tasks before signing off the project'};
+ if(db.tasks.some(t=>t.projectId===p.id&&!require('./task-completion-policy').validCompletion(db,t)))return {status:409,error:'Record time or approve zero hours for all completed tasks before final project sign-off'};
  return null;
 }
 async function handle({req,res,url,db,user,ps,WF,body,send,project,canReadTask,audit,write,now}){

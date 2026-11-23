@@ -309,6 +309,7 @@ function blockers(db, p, instance, node) {
   );
   if (tasks.some((t) => !["Completed","Not Required","Lost/Cancelled","No-Go (Client)","No-Go (DOA)","Lost (DOA)"].includes(t.status)))
     result.push("Complete all linked tasks first");
+  if(tasks.some(t=>!require("./task-completion-policy").validCompletion(db,t)))result.push("Record time or approve zero hours for completed tasks");
   if (node.completion === "tasks" && !tasks.length)
     result.push("Link at least one task");
   if (

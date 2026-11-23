@@ -7,7 +7,7 @@ test('legacy ownership binds only once; ambiguous names fail closed and notifica
  a.name='Renamed';Policy.renamed(db,a);assert.equal(db.tasks[0].assignee,'Renamed');assert.equal(db.leave[0].user,'Renamed');
 });
 test('a duplicate or reused display name cannot update tasks, log hours or receive another user’s notices/private leave',async()=>{
- const root=path.join(__dirname,'..'),dir=fs.mkdtempSync(path.join(os.tmpdir(),'ipm-owner-')),port=54500+Math.floor(Math.random()*500);fs.copyFileSync(path.join(root,'data/seed.json'),path.join(dir,'seed.json'));const server=spawn(process.execPath,[path.join(root,'server.js')],{env:{...process.env,PORT:String(port),ETS_DATA_DIR:dir},stdio:'ignore'});
+ const root=path.join(__dirname,'..'),dir=fs.mkdtempSync(path.join(os.tmpdir(),'ipm-owner-')),port=54500+Math.floor(Math.random()*500);fs.copyFileSync(path.join(root,'tests/fixtures/legacy-seed.json'),path.join(dir,'seed.json'));const server=spawn(process.execPath,[path.join(root,'server.js')],{env:{...process.env,PORT:String(port),ETS_DATA_DIR:dir},stdio:'ignore'});
  try{for(let i=0;i<100;i++){try{if((await fetch('http://127.0.0.1:'+port+'/health/ready')).ok)break;}catch{}await new Promise(r=>setTimeout(r,50));}
  const call=async(cookie,route,method='GET',body)=>{const r=await fetch('http://127.0.0.1:'+port+'/api'+route,{method,headers:{cookie:cookie||'','content-type':'application/json'},body:body===undefined?undefined:JSON.stringify(body)});return{status:r.status,data:await r.json(),cookie:r.headers.get('set-cookie')?.split(';')[0]}};
  const admin=(await call('','/login','POST',{user:'Stephan',id:'123',password:'Testing'})).cookie;

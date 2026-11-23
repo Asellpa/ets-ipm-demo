@@ -5,7 +5,7 @@ const path=require('node:path');
 const {spawn}=require('node:child_process');
 const root=path.resolve(__dirname,'../..');
 const temp=fs.mkdtempSync(path.join(os.tmpdir(),'ets-ipm-playwright-'));
-fs.copyFileSync(path.join(root,'data','seed.json'),path.join(temp,'seed.json'));
+fs.copyFileSync(path.join(root,'tests','fixtures','legacy-seed.json'),path.join(temp,'seed.json'));
 const child=spawn(process.execPath,[path.join(root,'server.js')],{
  env:{...process.env,PORT:'5174',ETS_DATA_DIR:temp},stdio:'inherit'
 });

@@ -8,7 +8,7 @@ const ROOT=path.resolve(__dirname,'..');
 const wait=ms=>new Promise(resolve=>setTimeout(resolve,ms));
 test('isolated API smoke test: authentication, permissions, project and task lifecycle',async()=>{
  const data=fs.mkdtempSync(path.join(os.tmpdir(),'ets-ipm-qa-'));
- fs.copyFileSync(path.join(ROOT,'data','seed.json'),path.join(data,'seed.json'));
+ fs.copyFileSync(path.join(ROOT,'tests','fixtures','legacy-seed.json'),path.join(data,'seed.json'));
  const port=51000+Math.floor(Math.random()*1000);
  const base='http://127.0.0.1:'+port;
  const server=spawn(process.execPath,[path.join(ROOT,'server.js')],{env:{...process.env,PORT:String(port),ETS_DATA_DIR:data},stdio:'pipe'});

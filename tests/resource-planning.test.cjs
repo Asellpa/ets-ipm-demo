@@ -1,7 +1,7 @@
 const {test}=require('node:test');const assert=require('node:assert/strict');const fs=require('node:fs');const os=require('node:os');const path=require('node:path');const {spawn}=require('node:child_process');
 test('workflow planning, dated capacity and append-only time logging',async()=>{
  const root=path.resolve(__dirname,'..'),data=fs.mkdtempSync(path.join(os.tmpdir(),'ipm-hours-')),port=53000+Math.floor(Math.random()*1000);
- fs.copyFileSync(path.join(root,'data/seed.json'),path.join(data,'seed.json'));
+ fs.copyFileSync(path.join(root,'tests/fixtures/legacy-seed.json'),path.join(data,'seed.json'));
  const server=spawn(process.execPath,[path.join(root,'server.js')],{env:{...process.env,PORT:String(port),ETS_DATA_DIR:data},stdio:'ignore'});
  try{
   for(let i=0;i<70;i++){try{await fetch(`http://127.0.0.1:${port}/`);break}catch{await new Promise(r=>setTimeout(r,100))}}
