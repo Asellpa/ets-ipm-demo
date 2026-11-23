@@ -12,6 +12,7 @@ Remain in demo until client acceptance. No production deployment and no live dat
 - Configurable register actions; remove duplicate Open. Suppress optional duplicate department fields and empty generic task controls outside the department workspace.
 - Scoped recording of time on behalf of staff, explicit approval reason, worker/recorder/approver attribution, daily limits and audit. Review & closure exposes permitted project task logs. Existing task and workflow locks still apply.
 - Private extra profile fields under Manage Users; separate from authentication. No profile values in staff bootstrap or unauthorised audit.
+- Persistent warnings for three consecutive working days overbooked in the next 60 calendar days. Daily in-app reminders continue until a permitted lead resolves the conflict and records a reason. Staff can add blocker notes; checklist ticks and notification reads never resolve a warning.
 - Asia/Dubai working calendar, editable work week/holidays/reserve; board labels match configured non-working days. Legacy reserve remains unchanged until configured; fresh demo reset initialises one hour when no calendar exists.
 - Tasks & Departments, Audit & History and Reports marked Under construction. Existing tools retained for demo testing.
 - Register task lookups indexed once per render rather than repeatedly scanning the task collection. Authenticated, role-specific conditional refreshes avoid transferring and parsing unchanged bootstrap data; requests still recheck access.
@@ -27,7 +28,7 @@ The prior per-object attachment API and stored files are retained for historical
 
 ## Deliberately deferred
 
-Org-chart view; daily-work/notification redesign; automatic P1 interruption proposals/rescheduling; three-consecutive-workday reminder/escalation automation; skills/certification matching; overtime/weekend approvals. Do not label these complete because calendar and time permissions exist. Any future rescheduling must require lead confirmation.
+Org-chart view; daily-work/notification redesign; automatic P1 interruption proposals/rescheduling; skills/certification matching; overtime/weekend approvals. Do not label these complete because calendar and time permissions exist. Any future rescheduling must require lead confirmation.
 
 ## Fresh demo records
 

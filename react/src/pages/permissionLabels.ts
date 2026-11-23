@@ -1,4 +1,5 @@
 export const permissionLabels:Record<string,{label:string;help:string}> = {
+manageCapacityWarnings:{label:"Review capacity warnings",help:"Review all staff capacity warnings and resolve them with a reason after the overbooking conflict is fixed. Checklist ticks cannot clear these warnings."},
 manageBusinessRoles:{label:"Manage business roles",help:"Configure business permissions within your own access. Sysadmin and administrator profiles stay protected."},
 manageCalendar:{label:"Manage working calendar",help:"Configure working days, holidays and daily reserve."},
 manageTime:{label:"Record and approve staff time",help:"Record or correct time for an assigned worker when you are the project lead or have staff management access. An audited reason is required."},

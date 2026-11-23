@@ -2,7 +2,7 @@ const crypto=require('node:crypto');
 const {DEFAULT_PROFILES}=require('./auth-profiles');
 function clearProjects(db){
   // Keep users, configuration, feedback, leave and existing audit history.
-  for(const key of ['projects','tasks','comments','escalations','projectLinks','importHistory','objectAttachments'])db[key]=[];
+  for(const key of ['projects','tasks','comments','escalations','projectLinks','capacityWarnings','importHistory','objectAttachments'])db[key]=[];
   db.projectWorkflows={};
   // Legacy notifications are free text and cannot reliably be detached from deleted work.
   db.notifications=[];

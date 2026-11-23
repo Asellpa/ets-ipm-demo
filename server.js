@@ -130,20 +130,8 @@ function nextWbs(db,p,parent){ parent=String(parent||p.wbs); const depth=parent.
 function diff(a,b,fields){ return fields.filter(k=>JSON.stringify(a[k]??'')!==JSON.stringify(b[k]??'')).map(k=>({field:k,from:a[k]??'',to:b[k]??''})); }
 function mime(p){ return p.endsWith('.woff2')?'font/woff2':p.endsWith('.woff')?'font/woff':p.endsWith('.css')?'text/css':p.endsWith('.js')?'application/javascript':p.endsWith('.html')?'text/html':'application/octet-stream'; }
 function csv(v){if(typeof v==='string'&&/^[=+@\t\r-]/.test(v))v="'"+v; return `"${String(v??'').replaceAll('"','""')}"`; }
-function spreadHours(startDate,total,max=8,dueDate='',cal={workingDays:[1,2,3,4,5],holidays:[]}) {
-  const result={}; if(!startDate || !Number(total)) return result;
-  if(dueDate && dueDate>=startDate) {
-    const dates=[]; let d=new Date(startDate+'T00:00:00Z');
-    while(d.toISOString().slice(0,10)<=dueDate) { if(cal.workingDays.includes(d.getUTCDay())&&!cal.holidays.includes(d.toISOString().slice(0,10)))dates.push(d.toISOString().slice(0,10)); d.setUTCDate(d.getUTCDate()+1); }
-    // Weekend-only work remains visible as a capacity conflict.
-    if(!dates.length)dates.push(startDate);
-    const units=Math.round(Number(total)*10000), base=Math.floor(units/dates.length);
-    dates.forEach((date,i)=>result[date]=(base+(i<units-base*dates.length?1:0))/10000);
-    return result;
-  }
-  let d=new Date(startDate+'T00:00:00Z'),left=Number(total),guard=0;
-  while(left>0&&guard++<75000){if(cal.workingDays.includes(d.getUTCDay())&&!cal.holidays.includes(d.toISOString().slice(0,10))){const h=Math.min(max,left);result[d.toISOString().slice(0,10)]=h;left-=h;}d.setUTCDate(d.getUTCDate()+1);}return result;
-}
+const {spreadHours}=require('./capacity-planning');
+
 function isSystemAdmin(user){return user?.profileId==='prof-admin';}
 function protectedUser(db,user,target,nextProfile){if(isSystemAdmin(user))return false;if(isSystemAdmin(target)||nextProfile==='prof-admin')return true;const actor=perms(db,user);return [target?.profileId,nextProfile].filter(Boolean).some(id=>PERMS.some(key=>db.profiles.find(p=>p.id===id)?.permissions?.[key]&&!actor[key]));}
 function ownerError(db,value,current){if(value!==undefined&&typeof value!=='string')return 'Project owner must be selected from existing users';return value && value!==current && !db.users.some(u=>u.active&&u.name===value)?'Project owner must be an active existing user':'';}
@@ -155,7 +143,7 @@ function uniqueUserConflict(db,uid,username,userId){ return db.users.some(x=>x.i
 function workflowTemplate(db,p,requested){const workflowId=requested||db.workflowConfig.projectTypes.find(t=>t.id===p.type)?.workflowId;return db.workflowConfig.workflows.find(w=>w.id===workflowId&&(!w.projectType||w.projectType===p.type));}
 function leadError(db,b){for(const key of ['managerId','supervisorId'])if(b[key]){const u=db.users.find(u=>u.id===b[key]&&u.active);if(!u||!isResource(u)||!perms(db,u).assignTasks)return 'Project managers and supervisors must be active named team members with task assignment permission; administration-only accounts are excluded';}return '';}
 function attachWorkflow(db,p,w,user){const instance=WF.create(w,user.id);db.projectWorkflows[p.id]=instance;p.workflowId=w.id;p.workflowVersion=instance.version;p.workflowSchemaVersion=3;for(const node of instance.nodes)for(const title of node.taskTemplates){const wbs=nextWbs(db,p,p.wbs);db.tasks.push({id:id('t'),projectId:p.id,wbs,parentWbs:p.wbs,level:3,title,assignee:'Unassigned',status:'To Do',mhEstimate:0,mhActual:0,startDate:p.startDate||new Date().toISOString().slice(0,10),dueDate:'',workflowNodeId:node.id,flag:'',flagReason:''});}for(const node of instance.nodes)for(const dept of node.departments||[]){const wbs=nextWbs(db,p,p.wbs);db.tasks.push({id:id('wp'),projectId:p.id,wbs,parentWbs:p.wbs,level:2,title:dept.name,department:dept.name,assignee:'Unassigned',assigneeId:null,status:'In Progress',mhEstimate:0,mhActual:0,workflowNodeId:node.id});for(const task of dept.tasks||[])db.tasks.push({id:id('t'),projectId:p.id,wbs:nextWbs(db,p,wbs),parentWbs:wbs,level:3,title:task.title,department:dept.name,assignee:'Unassigned',assigneeId:null,defaultRoleId:task.roleId||'',defaultRoleName:db.profiles.find(p=>p.id===task.roleId)?.name||'',status:'To Do',mhEstimate:task.hours,mhActual:0,startDate:p.startDate||'',dueDate:'',workflowNodeId:node.id});}WF.refresh(instance);}
-function workflowAuditVisible(db,a,user,ps){if(a.entityType==='client'&&!ps.viewClients)return false;if(a.entityType==='checklist'&&!ps.reviewChecklists&&db.checklistRuns.find(r=>r.id===a.entityId)?.userId!==user.id)return false;if(a.entityType==='checklist-template'&&!ps.manageChecklists)return false;const pid=a.projectId||(['project','workflow'].includes(a.entityType)?a.entityId:null);if(pid){const p=project(db,pid);if(!p)return isSystemAdmin(user);if(!canReadTask({},ps,p,db,user))return false;}if(a.dataGroup==='commercial'&&!ps.viewCommercialFields)return false;if(a.workflowNodeId){const p=project(db,a.projectId);return p&&WF.canRead(db,p,user,ps,a.workflowNodeId);}if(a.entityType==='task'){const t=db.tasks.find(t=>t.id===a.entityId);if(t?.workflowNodeId)return canReadTask(t,ps,project(db,t.projectId),db,user);}return true;}
+function workflowAuditVisible(db,a,user,ps){if(a.entityType==='capacity-warning'&&!ps.manageCapacityWarnings&&a.capacityUserId!==user.id)return false;if(a.entityType==='client'&&!ps.viewClients)return false;if(a.entityType==='checklist'&&!ps.reviewChecklists&&db.checklistRuns.find(r=>r.id===a.entityId)?.userId!==user.id)return false;if(a.entityType==='checklist-template'&&!ps.manageChecklists)return false;const pid=a.projectId||(['project','workflow'].includes(a.entityType)?a.entityId:null);if(pid){const p=project(db,pid);if(!p)return isSystemAdmin(user);if(!canReadTask({},ps,p,db,user))return false;}if(a.dataGroup==='commercial'&&!ps.viewCommercialFields)return false;if(a.workflowNodeId){const p=project(db,a.projectId);return p&&WF.canRead(db,p,user,ps,a.workflowNodeId);}if(a.entityType==='task'){const t=db.tasks.find(t=>t.id===a.entityId);if(t?.workflowNodeId)return canReadTask(t,ps,project(db,t.projectId),db,user);}return true;}
 function workflowNotify(db,p,user,before){const instance=db.projectWorkflows[p.id];if(!instance)return;WF.refresh(instance);for(const node of instance.nodes){if(instance.states[node.id].status==='In progress'&&before?.[node.id]?.status!=='In progress'){const recipients=db.users.filter(u=>u.active&&[p.managerId,p.supervisorId].includes(u.id)&&WF.canRead(db,p,u,perms(db,u),node.id)).map(u=>({userId:u.id}));if(recipients.length){notify(db,'Project '+p.wbs+': '+node.name+' is ready',recipients);Object.assign(db.notifications[0],{projectId:p.id,workflowNodeId:node.id});if(node.type==='notification')instance.states[node.id].notificationSentAt=now();}}}}
 
 
@@ -195,6 +183,7 @@ async function handle(req,res){ let release;try{
   }
 
   if(await DemoConfig.handle({req,res,url:u,db,user,ps,body,send,audit,write,id,now,project,canReadTask,WF}))return;
+  if(await require('./capacity-warnings').handle({req,res,url:u,db,user,ps,body,send,audit,write,id,now,perms,notify,spreadHours}))return;
   if(u.pathname.startsWith('/api/project-links'))return send(res,410,{error:'Project linking has been retired'});
   if(await require('./clients').handle({req,res,url:u,db,user,ps,WF,body,send,audit,write,id,now,safeProject}))return;
   if(await require('./shift-checklists').handle({req,res,url:u,db,user,ps,body,send,audit,write,id,now}))return;
@@ -256,8 +245,9 @@ async function handle(req,res){ let release;try{
   if(req.method==='GET'&&u.pathname==='/api/bootstrap'){
     const pmap=Object.fromEntries(db.projects.map(p=>[p.id,p]));
     const visibleProjects=db.projects.filter(p=>p.type!=='commercial'||ps.viewCommercial);
+    const warningSync=require('./capacity-warnings').sync(db,{id,audit,notify,perms,spreadHours});if(warningSync.changed)write(db);
     const visibleIds=new Set(visibleProjects.map(p=>p.id));
-    const notifications=db.notifications.filter(n=>Assignment.canReadNotice(n,user)).filter(n=>!n.workflowNodeId||project(db,n.projectId)&&WF.canRead(db,project(db,n.projectId),user,ps,n.workflowNodeId));
+    const notifications=db.notifications.filter(n=>!n.capacityWarningId||n.capacityUserId===user.id||ps.manageCapacityWarnings).filter(n=>Assignment.canReadNotice(n,user)).filter(n=>!n.workflowNodeId||project(db,n.projectId)&&WF.canRead(db,project(db,n.projectId),user,ps,n.workflowNodeId));
     const packet={authMode:process.env.AUTH_MODE==='proxy'?'proxy':'local',actorId:user.id,projectTypes:DemoConfig.types(db),preferences:{appearance:['light','dark','system'].includes(user.preferences?.appearance)?user.preferences.appearance:'system'},user:user.name,userId:user.userId,profile:profileOf(db,user)?.name,permissions:ps,clients:require('./clients').options(db,ps),
       users:db.users.filter(x=>x.active).map(x=>({id:x.id,name:x.name,position:x.position,capacity:x.capacity,resourceEnabled:isResource(x),profileId:x.profileId})),
       projectLinks:[],

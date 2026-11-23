@@ -188,3 +188,13 @@ Keep planned availability consistent with the company calendar.
 1. With Manage Working Calendar permission, open Resource Planning → Working calendar or Project Settings → Working calendar.
 2. Set Asia/Dubai, confirm the company’s working days, daily reserve and holiday dates, then save. No public-holiday dates are invented.
 3. The capacity board excludes configured non-working days, holidays and recorded leave. The reserve reduces planned available hours; it does not create actual time entries. Existing custom daily allocations remain visible as conflicts when they exceed capacity.
+
+## Resolve an overbooking warning
+
+A checklist tick does not approve a capacity conflict.
+
+1. The application checks the next 60 calendar days for three consecutive working days above planned capacity. It uses the configured calendar, holidays, reserve and leave. This is a planned-hours check, not an actual-time or overtime approval.
+2. Your open warning appears beside your checklist in My Work and in Shift Checklists. Add a blocker or progress note if you cannot resolve the issue. Reading the bell notice or ticking a checklist does not close the warning.
+3. Users with Review capacity warnings open Resource Planning → Capacity warnings to review staff warnings. Review allocations, assignments or availability first; the application does not reschedule work automatically.
+4. Once no three-day overbooking streak remains in the current window, select Refresh warnings, enter a resolution reason and Resolve warning. The application records who approved the resolution and preserves staff blocker notes.
+5. Unresolved warnings create another in-app reminder on the next day when the app is opened or refreshed. No external message or background rescheduling is performed.
