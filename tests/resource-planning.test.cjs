@@ -1,10 +1,11 @@
 const {test}=require('node:test');const assert=require('node:assert/strict');const fs=require('node:fs');const os=require('node:os');const path=require('node:path');const {spawn}=require('node:child_process');
 test('workflow planning, dated capacity and append-only time logging',async()=>{
- const root=path.resolve(__dirname,'..'),data=fs.mkdtempSync(path.join(os.tmpdir(),'ipm-hours-')),port=53000+Math.floor(Math.random()*1000);
+ const root=path.resolve(__dirname,'..'),data=fs.mkdtempSync(path.join(os.tmpdir(),'ipm-hours-'));let port,diagnostic='';
  fs.copyFileSync(path.join(root,'tests/fixtures/legacy-seed.json'),path.join(data,'seed.json'));
- const server=spawn(process.execPath,[path.join(root,'server.js')],{env:{...process.env,PORT:String(port),ETS_DATA_DIR:data},stdio:'ignore'});
+ const server=spawn(process.execPath,[path.join(root,'server.js')],{env:{...process.env,PORT:'0',ETS_DATA_DIR:data},stdio:['ignore','pipe','pipe']});server.stderr.on('data',chunk=>{diagnostic+=chunk});
+ const ready=new Promise((resolve,reject)=>{let output='';server.stdout.on('data',chunk=>{output+=chunk;const match=output.match(/running on port (\d+)/);if(match){port=Number(match[1]);resolve()}});server.once('error',reject);server.once('exit',code=>reject(Error('Isolated backend exited '+code+': '+diagnostic)))});
  try{
-  for(let i=0;i<70;i++){try{await fetch(`http://127.0.0.1:${port}/`);break}catch{await new Promise(r=>setTimeout(r,100))}}
+  let timer;try{await Promise.race([ready,new Promise((_,reject)=>{timer=setTimeout(()=>reject(Error('Isolated backend did not become ready: '+diagnostic)),15000)})])}finally{clearTimeout(timer)}
   const login=await fetch(`http://127.0.0.1:${port}/api/login`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({user:'Stephan',id:'123',password:'Testing'})});const cookie=login.headers.get('set-cookie').split(';')[0];
   const call=async(route,method='GET',body)=>{const res=await fetch(`http://127.0.0.1:${port}/api${route}`,{method,headers:{Cookie:cookie,'Content-Type':'application/json'},body:body?JSON.stringify(body):undefined});return {status:res.status,data:await res.json()}};
   const commercial=await call('/projects','POST',{type:'commercial',workflowId:'commercial',title:'Commercial template QA'});assert.equal(commercial.status,201,JSON.stringify(commercial));assert.equal(commercial.data.project.status,'Not Started');
@@ -35,5 +36,5 @@ test('workflow planning, dated capacity and append-only time logging',async()=>{
   logged=await call('/tasks/'+id+'/time-entries','POST',{...entry,entryId:'time-entry-456',hours:1,overrunReason:'Additional review'});assert.equal(logged.status,201);assert.equal(logged.data.task.mhActual,4);assert.equal(logged.data.task.flag,'Escalation');
   assert.equal((await call('/tasks/'+id+'/time-entries','POST',{...entry,entryId:'time-entry-789',date:'3001-01-01'})).status,422);
   flow=(await call('/projects/'+pid+'/workflow')).data;assert.equal((flow.workflow||flow).nodes.find(n=>n.id===active.id).hours.actual,4);
- }finally{server.kill();await new Promise(r=>server.once('exit',r));fs.rmSync(data,{recursive:true,force:true})}
+ }finally{if(server.exitCode===null&&server.signalCode===null){server.kill();await new Promise(r=>server.once('exit',r));}fs.rmSync(data,{recursive:true,force:true})}
 });
