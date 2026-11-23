@@ -56,6 +56,7 @@ function ObjectDetails({
   data,
   onChange,
   onDirtyChange,
+  onBusyChange,
   tools,
 }: {
   node: WorkNode;
@@ -64,6 +65,7 @@ function ObjectDetails({
   data: Session;
   onChange: () => Promise<void>;
   onDirtyChange: (dirty:boolean) => void;
+  onBusyChange: (busy:boolean) => void;
   tools?: ReactNode;
 }) {
   const [values, setValues] = useState(node.values || {});
@@ -79,6 +81,7 @@ function ObjectDetails({
   useEffect(()=>{onDirtyChange(changed||!!comment.trim());return()=>onDirtyChange(false)},[changed,comment,onDirtyChange]);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
+  useEffect(()=>{onBusyChange(busy);return()=>onBusyChange(false)},[busy,onBusyChange]);
   const [taskTitle, setTaskTitle] = useState('');
   const [assignee, setAssignee] = useState('Unassigned');
   const [estimate, setEstimate] = useState(0);
@@ -435,6 +438,7 @@ export default function ProjectWorkspace({
   onBack,
   onRefresh,
   onDirtyChange,
+  onBusyChange,
   renderTools,
 }: {
   project: Project;
@@ -444,6 +448,7 @@ export default function ProjectWorkspace({
   onBack: () => void;
   onRefresh: () => Promise<void>;
   onDirtyChange?: (dirty:boolean) => void;
+  onBusyChange?: (busy:boolean) => void;
   renderTools?: (node:WorkNode,refresh:()=>Promise<void>) => ReactNode;
 }) {
   const [instance, setInstance] = useState<Instance | null>(null);
@@ -451,17 +456,18 @@ export default function ProjectWorkspace({
   const [selected, setSelected] = useState(initialNodeId||'');
   const dirty=useRef(false);
   const reportDirty=useCallback((value:boolean)=>{dirty.current=value;onDirtyChange?.(value)},[onDirtyChange]);
-  function navigate(id:string){if(id===selected)return;if(dirty.current&&!window.confirm('Discard unsaved object fields or comment?'))return;reportDirty(false);setSelected(id);const body=document.querySelector('.project-popup-body');if(body)body.scrollTop=0;}
+  function navigate(id:string){if(busy||id===selected)return;if(dirty.current&&!window.confirm('Discard unsaved object fields or comment?'))return;reportDirty(false);setSelected(id);const body=document.querySelector('.project-popup-body');if(body)body.scrollTop=0;}
   const [error, setError] = useState('');
   const [templates, setTemplates] = useState<{ id: string; name: string }[]>([]);
   const [template, setTemplate] = useState('');
   const [canAttach, setCanAttach] = useState(false);
   const [busy, setBusy] = useState(false);
+  useEffect(()=>{onBusyChange?.(busy);return()=>onBusyChange?.(false)},[busy,onBusyChange]);
   const load = useCallback(async () => {
     const result = await request<{ workflow: Instance | null; canAttach: boolean }>(
       '/projects/' + encodeURIComponent(project.id) + '/workflow',
     );
-    setInstance(previous=>JSON.stringify(previous)===JSON.stringify(result.workflow)?previous:result.workflow);
+    setInstance(previous=>(result.workflow?.revision||0)<(previous?.revision||0)||JSON.stringify(previous)===JSON.stringify(result.workflow)?previous:result.workflow);
     setCanAttach(result.canAttach);
     setSelected((current) =>
       result.workflow?.nodes.some((n) => n.id === current)
@@ -617,6 +623,7 @@ export default function ProjectWorkspace({
               {ordered.map((item) => (
                 <button
                   key={item.id}
+                  disabled={busy}
                   className={selected === item.id ? 'selected' : ''}
                   style={{ paddingLeft: 12 + depth(item) * 16 }}
                   aria-label={item.name}
@@ -641,6 +648,7 @@ export default function ProjectWorkspace({
                 data={data}
                 onChange={refresh}
                 onDirtyChange={reportDirty}
+                onBusyChange={setBusy}
                 tools={renderTools?.(node,refresh)}
               />
             ) : (
