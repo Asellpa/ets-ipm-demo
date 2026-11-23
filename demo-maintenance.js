@@ -7,12 +7,13 @@ function clearProjects(db){
   // Legacy notifications are free text and cannot reliably be detached from deleted work.
   db.notifications=[];
 }
-function clearDemoHistory(db){
+function clearDemoHistory(db,{includeClients=false}={}){
   // A local-demo handover only. Preserve identities, client directories, access
   // rules, workflow/checklist templates and setup markers; do not reseed them.
   clearProjects(db);
   for(const key of ['audit','feedback','checklistRuns','leave'])db[key]=[];
   db.projectSequences={};
+  if(includeClients)db.clients=[];
 }
 function prepareDemo(db,password){
   db.maintenance ||= {};

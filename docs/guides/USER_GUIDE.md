@@ -54,7 +54,7 @@ Use a reusable client profile instead of repeatedly typing names.
 1. With Manage Clients permission, open Clients and create the client profile and contact information. Check for an existing profile before adding another.
 2. In the project’s configured client field or editable register column, select the client from the list and save.
 3. Client summaries show projects for that client and permitted task-hour totals. They respect project, object, field and financial access; totals can differ between roles.
-4. Archive an unused client instead of removing its history. Existing links remain. Older text-only client values must be explicitly linked; matching text is not automatically a relationship.
+4. With Manage Client Profiles permission, use Delete client to remove an unused profile and its focal contacts after confirmation. Clients linked to any project, including older matching text-only records, cannot be deleted. Use Edit client and clear Active client to archive them; existing project links and history remain. A deletion is recorded in the audit.
 5. Within a client profile, add or edit several focal contacts if you have Manage client contacts permission. In a project, select its client first, expand Attachments & client focal contacts, tick the relevant people and Save focal contacts. Contacts can also be added there; archived contacts remain in existing selections until removed.
 
 ## Create a project

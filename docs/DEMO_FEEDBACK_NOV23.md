@@ -7,6 +7,7 @@ Remain in demo until client acceptance. No production deployment and no live dat
 - Admin business role management with protected system access and bounded delegation.
 - Editable project types separate from commercial/internal security category; dynamic register tabs, archive, workflow compatibility and stale-save checks.
 - Workflow-defined department/default-task templates, estimates and default role eligibility; snapshots copied only into newly created projects. Current workflows are not automatically rewritten.
+- Authorised deletion of unused client profiles and nested contacts, with confirmation, revision checks and an audit event. All project references, including hidden projects and legacy client text, block deletion; archive linked clients instead.
 - Multiple client contacts, contact archive/editing, project focal selections and project-specific named HTTPS document locations. Attachments opens the configured primary location. SharePoint remains responsible for file access.
 - Remove the Internal/Projects linking UI and retire its API with HTTP 410. Client/project associations are retained.
 - Configurable register actions; remove duplicate Open. Suppress optional duplicate department fields and empty generic task controls outside the department workspace.
@@ -36,12 +37,12 @@ Org-chart view; daily-work/notification redesign; automatic P1 interruption prop
 Stop the backend first. From the project root run:
 
 ```powershell
-npm run demo:clear -- --confirm-clear-projects
+node scripts/clear-demo-projects.cjs --confirm-clear-projects
 ```
 
 The command refuses production/PostgreSQL mode and a running local backend, creates a timestamped database backup, clears project/task-specific records and preserves workflow templates and accounts. It does not reset passwords. The operator must protect the backup directory with appropriate filesystem permissions, especially on Windows. Keep the backup until the new demo is accepted.
 
-For the explicitly requested clean handover, add `--include-history` to also remove audit records, feedback, checklist activity, leave bookings and notifications, and restart project numbering. Clients/contacts, accounts/passwords, roles, workflow/checklist templates, settings and setup markers remain unchanged. This is a local operator command, not a frontend action or an automatic upgrade. The old data remains in the exact pre-cleanup backup; external SharePoint documents and private-file blobs are not physically erased.
+For the explicitly requested clean handover, add `--include-history` to also remove audit records, feedback, checklist activity, leave bookings and notifications, and restart project numbering. Accounts/passwords, roles, workflow/checklist templates, settings and setup markers remain unchanged. Clients/contacts are retained unless `--include-clients` is explicitly added together with `--include-history`. Individual unused client profiles can now be deleted by client administrators; linked profiles must be archived. This is a local operator command, not a frontend action or an automatic upgrade. The old data remains in the exact pre-cleanup backup; external SharePoint documents and private-file blobs are not physically erased.
 
 ## QA
 

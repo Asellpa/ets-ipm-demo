@@ -1,11 +1,134 @@
-import {useCallback,useEffect,useState,type FormEvent} from 'react';
-import {request} from '../api';
-export type Contact={id:string;name:string;email:string;phone:string;position:string;active:boolean;revision:number};
-const blank={name:'',email:'',phone:'',position:'',active:true};
-export default function ClientContacts({clientId,canManage}:{clientId:string;canManage:boolean}){
- const[contacts,setContacts]=useState<Contact[]>([]),[draft,setDraft]=useState<(typeof blank&{id?:string;revision?:number})|null>(null),[busy,setBusy]=useState(false),[error,setError]=useState('');
- const load=useCallback(async()=>{const r=await request<{contacts:Contact[]}>('/clients/'+clientId+'/contacts');setContacts(r.contacts)},[clientId]);
- useEffect(()=>{void load().catch(e=>setError(e.message))},[load]);
- async function save(e:FormEvent){e.preventDefault();if(!draft)return;setBusy(true);setError('');try{await request('/clients/'+clientId+'/contacts'+(draft.id?'/'+draft.id:''),{method:draft.id?'PATCH':'POST',body:JSON.stringify({...draft,expectedRevision:draft.revision})});setDraft(null);await load()}catch(e){setError((e as Error).message)}finally{setBusy(false)}}
- return <section aria-label="Client contact directory"><h3>Focal contacts</h3><p className="muted">Projects can select several contacts. Archive a contact to prevent new selections while preserving history.</p>{error&&<p className="error" role="alert">{error}</p>}{contacts.map(c=><p key={c.id}><strong>{c.name}</strong> · {c.position} {c.email} {c.phone}{!c.active?' · Archived':''} {canManage&&<button onClick={()=>setDraft(c)}>Edit contact {c.name}</button>}</p>)}{canManage&&!draft&&<button onClick={()=>setDraft({...blank})}>+ Focal contact</button>}{draft&&<form data-unsaved="true" className="editor" aria-label="Edit focal contact" onSubmit={e=>void save(e)}>{(['name','email','phone','position'] as const).map(k=><label key={k}>{({name:'Contact name',email:'Contact email',phone:'Contact phone',position:'Contact position'})[k]}<input disabled={busy} required={k==='name'} type={k==='email'?'email':'text'} maxLength={k==='name'?160:200} value={draft[k]} onChange={e=>setDraft({...draft,[k]:e.target.value})}/></label>)}<label><input disabled={busy} type="checkbox" checked={draft.active} onChange={e=>setDraft({...draft,active:e.target.checked})}/>Active contact</label><div className="form-actions"><button type="button" disabled={busy} onClick={()=>setDraft(null)}>Cancel contact</button><button className="primary" disabled={busy}>Save contact</button></div></form>}</section>
+import { useCallback, useEffect, useState, type FormEvent } from 'react';
+import { request } from '../api';
+export type Contact = {
+  id: string;
+  name: string;
+  email: string;
+  phone: string;
+  position: string;
+  active: boolean;
+  revision: number;
+};
+const blank = { name: '', email: '', phone: '', position: '', active: true };
+export default function ClientContacts({
+  clientId,
+  canManage,
+  onSaved,
+  onBusyChange,
+}: {
+  clientId: string;
+  canManage: boolean;
+  onSaved?: () => Promise<void>;
+  onBusyChange?: (busy: boolean) => void;
+}) {
+  const [contacts, setContacts] = useState<Contact[]>([]),
+    [draft, setDraft] = useState<(typeof blank & { id?: string; revision?: number }) | null>(null),
+    [busy, setBusy] = useState(false),
+    [error, setError] = useState('');
+  const load = useCallback(async () => {
+    const r = await request<{ contacts: Contact[] }>('/clients/' + clientId + '/contacts');
+    setContacts(r.contacts);
+  }, [clientId]);
+  useEffect(() => {
+    onBusyChange?.(busy);
+    return () => onBusyChange?.(false);
+  }, [busy, onBusyChange]);
+  useEffect(() => {
+    void load().catch((e) => setError(e.message));
+  }, [load]);
+  async function save(e: FormEvent) {
+    e.preventDefault();
+    if (!draft) return;
+    setBusy(true);
+    setError('');
+    try {
+      await request('/clients/' + clientId + '/contacts' + (draft.id ? '/' + draft.id : ''), {
+        method: draft.id ? 'PATCH' : 'POST',
+        body: JSON.stringify({ ...draft, expectedRevision: draft.revision }),
+      });
+      setDraft(null);
+      await load();
+      await onSaved?.();
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <section aria-label="Client contact directory">
+      <h3>Focal contacts</h3>
+      <p className="muted">
+        Projects can select several contacts. Archive a contact to prevent new selections while
+        preserving history.
+      </p>
+      {error && (
+        <p className="error" role="alert">
+          {error}
+        </p>
+      )}
+      {contacts.map((c) => (
+        <p key={c.id}>
+          <strong>{c.name}</strong> · {c.position} {c.email} {c.phone}
+          {!c.active ? ' · Archived' : ''}{' '}
+          {canManage && (
+            <button disabled={busy} onClick={() => setDraft(c)}>
+              Edit contact {c.name}
+            </button>
+          )}
+        </p>
+      ))}
+      {canManage && !draft && (
+        <button disabled={busy} onClick={() => setDraft({ ...blank })}>
+          + Focal contact
+        </button>
+      )}
+      {draft && (
+        <form
+          data-unsaved="true"
+          className="editor"
+          aria-label="Edit focal contact"
+          onSubmit={(e) => void save(e)}
+        >
+          {(['name', 'email', 'phone', 'position'] as const).map((k) => (
+            <label key={k}>
+              {
+                {
+                  name: 'Contact name',
+                  email: 'Contact email',
+                  phone: 'Contact phone',
+                  position: 'Contact position',
+                }[k]
+              }
+              <input
+                disabled={busy}
+                required={k === 'name'}
+                type={k === 'email' ? 'email' : 'text'}
+                maxLength={k === 'name' ? 160 : 200}
+                value={draft[k]}
+                onChange={(e) => setDraft({ ...draft, [k]: e.target.value })}
+              />
+            </label>
+          ))}
+          <label>
+            <input
+              disabled={busy}
+              type="checkbox"
+              checked={draft.active}
+              onChange={(e) => setDraft({ ...draft, active: e.target.checked })}
+            />
+            Active contact
+          </label>
+          <div className="form-actions">
+            <button type="button" disabled={busy} onClick={() => setDraft(null)}>
+              Cancel contact
+            </button>
+            <button className="primary" disabled={busy}>
+              Save contact
+            </button>
+          </div>
+        </form>
+      )}
+    </section>
+  );
 }

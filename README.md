@@ -41,10 +41,10 @@ No shared credentials are provided in this guide. Obtain named access from the a
 Stop both demo terminals before updating or cleaning data. From the root, run:
 
 ```powershell
-npm run demo:clear -- --confirm-clear-projects --include-history
+node scripts/clear-demo-projects.cjs --confirm-clear-projects --include-history
 ```
 
-This local JSON-demo command makes an exact database backup before clearing projects/tasks, time and workflow-instance history, audit records, notifications, feedback, checklist activity, leave bookings and import history. Project numbering restarts at 1 / EER-001. Users/passwords, roles, clients/contacts, workflow and checklist templates, settings and setup markers are preserved. Without `--include-history`, the command retains audit, feedback, checklist activity and leave bookings. No cleanup runs automatically on pull or startup.
+This local JSON-demo command makes an exact database backup before clearing projects/tasks, time and workflow-instance history, audit records, notifications, feedback, checklist activity, leave bookings and import history. Project numbering restarts at 1 / EER-001. Users/passwords, roles, clients/contacts, workflow and checklist templates, settings and setup markers are preserved. Without `--include-history`, the command retains audit, feedback, checklist activity and leave bookings. Add `--include-clients` alongside `--include-history` to also clear client profiles and their focal contacts for a completely fresh demo. Without that explicit flag, clients are retained. No cleanup runs automatically on pull or startup.
 
 The backup path is printed; keep it protected until handover is accepted. SharePoint documents and old external private-file blobs are not physically deleted. The command refuses production, PostgreSQL configuration and a listener on the configured backend port (5174 by default). For a custom backend port, use the same PORT environment setting as that backend.
 

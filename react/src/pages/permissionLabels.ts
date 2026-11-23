@@ -5,7 +5,7 @@ manageBusinessRoles:{label:"Manage business roles",help:"Configure business perm
 manageCalendar:{label:"Manage working calendar",help:"Configure working days, holidays and daily reserve."},
 manageTime:{label:"Record and approve staff time",help:"Record or correct time for an assigned worker when you are the project lead or have staff management access. An audited reason is required."},
 viewClients:{label:"View Client Profiles",help:"Read client contacts and linked projects. Project and field permissions still filter linked work and hours."},
-manageClients:{label:"Manage Client Profiles",help:"Create, edit and archive clients. Requires View Client Profiles."},
+manageClients:{label:"Manage Client Profiles",help:"Create, edit and archive clients; delete unused profiles and their focal contacts. Linked clients must be archived. Requires View Client Profiles."},
 manageChecklists:{label:"Manage Shift Checklists",help:"Create, edit and archive role-based templates. Does not grant access to other staff records. Admins only by default; System Administrator can delegate."},
 reviewChecklists:{label:"Review Shift Checklists",help:"Read drafts, submissions and notes for ALL staff, not just your project/team. Cannot change or submit for anyone else. Admins only by default; delegate only to trusted reviewers."},
   "viewCommercial": {

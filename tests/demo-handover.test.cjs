@@ -15,6 +15,7 @@ test('clean demo handover clears activity and numbering while preserving configu
  assert.deepEqual(db.projectWorkflows,{});assert.deepEqual(db.projectSequences,{});
  for(const key of Object.keys(before).filter(key=>!records.includes(key)&&!['projectWorkflows','projectSequences'].includes(key)))assert.deepEqual(db[key],before[key],key+' must be preserved');
  const once=structuredClone(db);clearDemoHistory(db);assert.deepEqual(db,once,'Cleanup is idempotent');
+ const all=structuredClone(before);clearDemoHistory(all,{includeClients:true});assert.deepEqual(all.clients,[]);assert.deepEqual(all.users,before.users);assert.deepEqual(all.workflowConfig,before.workflowConfig);
 });
 test('local handover refuses unsafe targets, makes an exact backup and restarts with empty registers and valid accounts',async()=>{
  const root=path.resolve(__dirname,'..'),dir=fs.mkdtempSync(path.join(os.tmpdir(),'ipm-handover-')),file=path.join(dir,'db.json');
@@ -35,7 +36,7 @@ test('local handover refuses unsafe targets, makes an exact backup and restarts 
   db.clients=[{id:'client-keep',name:'Retained client',active:true,contacts:[{id:'contact-keep',name:'Retained contact',active:true}]}];
   db.settings.customHandoverSetting='keep';db.maintenance={sysadmin1309Setup:{at:'keep-setup-marker'}};db.projectSequences={commercial:55,internal_eer:40};
   const original=JSON.stringify(db,null,2);fs.writeFileSync(file,original);
-  for(const [flags,extra]of [[['--include-history'],{}],[args,{NODE_ENV:'production'}],[args,{DATABASE_URL:'postgresql://synthetic/blocked'}],[args,{DATABASE_URL_FILE:'/synthetic/secret-file'}]]){
+  for(const [flags,extra]of [[['--include-history'],{}],[['--confirm-clear-projects','--include-clients'],{}],[args,{NODE_ENV:'production'}],[args,{DATABASE_URL:'postgresql://synthetic/blocked'}],[args,{DATABASE_URL_FILE:'/synthetic/secret-file'}]]){
    const result=run(flags,extra);assert.notEqual(result.status,0);assert.equal(fs.readFileSync(file,'utf8'),original);
   }
   assert.equal(fs.readdirSync(dir).filter(name=>name.includes('.before-project-clear-')).length,0,'Rejected operations cannot create a misleading backup');
@@ -55,5 +56,11 @@ test('local handover refuses unsafe targets, makes an exact backup and restarts 
   for(const[type,workflowId,wbs]of [['commercial','commercial','1'],['internal_eer','eer','EER-001']]){
    const created=await call(auth.cookie,'/projects','POST',{type,workflowId,title:'New '+type});assert.equal(created.status,201);assert.equal(created.data.project.wbs,wbs);
   }
+  await stopBackend(child);const beforeFull=fs.readFileSync(file,'utf8'),source=JSON.parse(beforeFull);
+  const full=run([...args,'--include-clients']);assert.equal(full.status,0,full.stderr);assert.match(full.stdout,/contacts also cleared/);
+  const fullData=JSON.parse(fs.readFileSync(file,'utf8'));assert.deepEqual(fullData.clients,[]);assert.deepEqual(fullData.projects,[]);assert.deepEqual(fullData.audit,[]);
+  for(const key of ['users','profiles','workflowConfig','settings','checklistTemplates','maintenance'])assert.deepEqual(fullData[key],source[key],key+' remains after explicitly clearing clients');
+  assert.ok(fs.readdirSync(dir).filter(name=>name.startsWith('db.json.before-project-clear-')).some(name=>fs.readFileSync(path.join(dir,name),'utf8')===beforeFull),'The client-inclusive cleanup also creates an exact backup');
+  await start();auth=await login();assert.equal(auth.status,200);assert.deepEqual((await call(auth.cookie,'/clients')).data.clients,[]);
  }finally{await stopBackend(child);fs.rmSync(dir,{recursive:true,force:true})}
 });
