@@ -130,16 +130,18 @@ Define the project structure before users create records.
 
 ## Manage access and register fields
 
-Application permissions, object rules and field rules are cumulative restrictions.
+Application capabilities, workflow object access and field restrictions work together.
 
-1. Assign existing role profiles under Manage Users. Only System Administrator can manage role profiles. Admin can administer permitted areas without acquiring the protected role-management capability.
-2. Role Management controls application capabilities such as creating projects, assigning tasks, reports and commercial-data access.
+1. Assign existing role profiles under Manage Users with the appropriate user-administration permission. System Administrator and authorised business-role administrators, including Admin, can manage business profiles within their own access. Protected administrator delegation remains reserved for System Administrator.
+2. Role Management controls application capabilities such as creating projects, assigning tasks, reports and commercial-data access. Edit Projects controls register-level editing; editing a workflow form is controlled separately by object and field access.
 3. Project Settings → Field permissions → Objects & sign-off controls Hidden, View, Edit, Complete and Approve. Unspecified access inherits from the ancestor; a hidden ancestor hides descendants.
 4. The Fields matrix controls Inherit, Hidden, View and Edit. A field rule cannot expand object access, bypass workflow locks, grant financial access or replace a named lead.
 5. Saving template policies applies to new projects. The explicit existing-project option updates matching access rules without replacing structure, values or sign-offs. Review the affected records before choosing it.
 6. Register configuration controls column visibility/editability and project-type tab order. Showing a column does not grant access to its data.
 7. Financial protection remains separate. Team/owner fields do not grant extra access, pricing visibility or sign-off authority. Test sensitive changes with representative accounts.
 8. Admin can manage business role profiles, including TL, deputy and coordinator capabilities. Manage client contacts is separate from client company administration. System Administrator and administrator delegation stay protected. A job title alone never grants access.
+9. Copy application permissions copies the selected profile's application checkboxes only. New and copied profiles inherit workflow defaults; they do not copy the source profile's object or field restrictions. Review the new profile in both permission matrices before assigning users, and explicitly apply policies to existing projects where needed.
+10. When no object rule is configured, an assigned project manager/supervisor with Assign Tasks defaults to Approve, another role with Assign Tasks defaults to Edit, and other users default to View. A field set to Edit cannot raise a View object; a hidden ancestor hides its descendants. Approve still requires the named lead, task-assignment capability, prerequisites and an unlocked object before sign-off.
 
 ## Manage users and checklist templates
 

@@ -1,0 +1,37 @@
+const {test,expect}=require('@playwright/test');
+
+test('copying application permissions explains its scope and leaves workflow rules for explicit review',async({page})=>{
+ await page.goto('/');
+ await page.getByLabel('Username',{exact:true}).fill('Stephan');
+ await page.getByLabel('User ID',{exact:true}).fill('123');
+ await page.getByLabel('Password',{exact:true}).fill('Testing');
+ await page.getByRole('button',{name:'Sign in',exact:true}).click();
+ await expect(page.getByRole('heading',{name:'Overview',level:1})).toBeVisible();
+ const suffix=Date.now(),sourceName='Scoped role '+suffix,copyName='Application copy '+suffix;
+ const created=await page.request.post('/api/admin/profiles',{data:{name:sourceName,permissions:{viewCommercial:true,assignTasks:true}}});
+ expect(created.status()).toBe(201);
+ const {id:sourceId}=await created.json();
+ const {config}=await(await page.request.get('/api/workflow-config')).json();
+ const workflowId='copy-scope-'+suffix;
+ config.workflows.push({id:workflowId,name:'Copy scope '+suffix,stages:['Overview'],objects:[],nodes:[{id:'overview',name:'Overview',type:'stage',parent:'',completion:'manual',permissions:{[sourceId]:'view'},fields:[{id:'scope',label:'Details',type:'text',required:false,permissions:{[sourceId]:'hidden'}}]}]});
+ expect((await page.request.put('/api/workflow-config',{data:{config}})).status()).toBe(200);
+ await page.getByRole('button',{name:'Role Management',exact:true}).click();
+ const card=page.getByRole('article').filter({has:page.getByRole('heading',{name:sourceName,exact:true})});
+ await card.getByRole('button',{name:'Copy application permissions',exact:true}).click();
+ const dialog=page.getByRole('dialog');
+ await expect(dialog.getByRole('note')).toContainText('object and field rules are not copied');
+ await expect(dialog.getByLabel('View Projects',{exact:false})).toBeChecked();
+ await expect(dialog.getByLabel('Assign Tasks & Estimates',{exact:false})).toBeChecked();
+ await dialog.getByLabel('Profile Name',{exact:true}).fill(copyName);
+ await dialog.getByRole('button',{name:'Save Profile',exact:true}).click();
+ await expect(dialog).toHaveCount(0);
+ await expect(page.getByRole('status')).toHaveText('Role profile created. Review object and field access in Project Settings before assigning users.');
+ await page.getByRole('button',{name:'Project Settings',exact:true}).click();
+ await page.getByRole('button',{name:'Field permissions',exact:true}).click();
+ await page.getByLabel('Permission workflow',{exact:true}).selectOption(workflowId);
+ await expect(page.getByLabel(sourceName+' access to Overview / Details',{exact:true})).toHaveValue('hidden');
+ await expect(page.getByLabel(copyName+' access to Overview / Details',{exact:true})).toHaveValue('inherit');
+ await page.getByRole('button',{name:'Objects & sign-off',exact:true}).click();
+ await expect(page.getByLabel(sourceName+' access to Overview',{exact:true})).toHaveValue('view');
+ await expect(page.getByLabel(copyName+' access to Overview',{exact:true})).toHaveValue('inherit');
+});
