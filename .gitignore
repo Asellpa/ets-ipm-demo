@@ -13,3 +13,7 @@ data/*.setup-*
 deploy/secrets/
 backups/
 private-files/
+
+# Demo project-reset backups and temporary replacement files contain private records.
+data/db.json.before-project-clear-*
+data/db.json.clear-*

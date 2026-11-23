@@ -14,7 +14,7 @@ Remain in demo until client acceptance. No production deployment and no live dat
 - Private extra profile fields under Manage Users; separate from authentication. No profile values in staff bootstrap or unauthorised audit.
 - Asia/Dubai working calendar, editable work week/holidays/reserve; board labels match configured non-working days. Legacy reserve remains unchanged until configured; fresh demo reset initialises one hour when no calendar exists.
 - Tasks & Departments, Audit & History and Reports marked Under construction. Existing tools retained for demo testing.
-- Register task lookups indexed once per render rather than repeatedly scanning the task collection.
+- Register task lookups indexed once per render rather than repeatedly scanning the task collection. Authenticated, role-specific conditional refreshes avoid transferring and parsing unchanged bootstrap data; requests still recheck access.
 - Private backup-first local demo-clear command; accounts, clients and workflow configuration retained.
 
 ## Owner setup

@@ -1,7 +1,7 @@
 export const permissionLabels:Record<string,{label:string;help:string}> = {
 manageBusinessRoles:{label:"Manage business roles",help:"Configure business permissions within your own access. Sysadmin and administrator profiles stay protected."},
 manageCalendar:{label:"Manage working calendar",help:"Configure working days, holidays and daily reserve."},
-manageTime:{label:"Record and approve staff time",help:"Record or correct time for another named task assignee, with an audited reason."},
+manageTime:{label:"Record and approve staff time",help:"Record or correct time for an assigned worker when you are the project lead or have staff management access. An audited reason is required."},
 viewClients:{label:"View Client Profiles",help:"Read client contacts and linked projects. Project and field permissions still filter linked work and hours."},
 manageClients:{label:"Manage Client Profiles",help:"Create, edit and archive clients. Requires View Client Profiles."},
 manageChecklists:{label:"Manage Shift Checklists",help:"Create, edit and archive role-based templates. Does not grant access to other staff records. Admins only by default; System Administrator can delegate."},

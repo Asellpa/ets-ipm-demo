@@ -173,7 +173,8 @@
       "The Fields matrix controls Inherit, Hidden, View and Edit. A field rule cannot expand object access, bypass workflow locks, grant financial access or replace a named lead.",
       "Saving template policies applies to new projects. The explicit existing-project option updates matching access rules without replacing structure, values or sign-offs. Review the affected records before choosing it.",
       "Register configuration controls column visibility/editability and project-type tab order. Showing a column does not grant access to its data.",
-      "Financial protection remains separate. Team/owner fields do not grant extra access, pricing visibility or sign-off authority. Test sensitive changes with representative accounts."
+      "Financial protection remains separate. Team/owner fields do not grant extra access, pricing visibility or sign-off authority. Test sensitive changes with representative accounts.",
+      "Admin can manage business role profiles, including TL, deputy and coordinator capabilities. System Administrator and administrator delegation stay protected. A job title alone never grants access."
     ]
   },
   {

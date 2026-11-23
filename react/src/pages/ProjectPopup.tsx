@@ -10,7 +10,7 @@ export default function ProjectPopup({project,data,onClose,onRefresh}:{project:P
  const ref=useRef<HTMLDialogElement>(null);const[full,setFull]=useState(false);const[error,setError]=useState('');const[busy,setBusy]=useState(false);const dirty=useRef(false);const[actions,setActions]=useState(false);const[signComment,setSignComment]=useState('');
  const leaves=data.tasks.filter(t=>t.projectId===project.id&&Number(t.level||3)>=3);
  useEffect(()=>{const el=ref.current;el?.showModal();const old=document.body.style.overflow;document.body.style.overflow='hidden';return()=>{el?.close();document.body.style.overflow=old}},[]);
- function close(){if(!busy&&(!dirty.current||window.confirm('Discard unsaved object fields?')))onClose()}
+ function close(){const unsaved=dirty.current||!!signComment.trim()||!!ref.current?.querySelector('[data-unsaved=true]');if(!busy&&(!unsaved||window.confirm('Discard unsaved project changes?')))onClose()}
  async function signoff(){setBusy(true);setError('');try{const {workflow}=await request<{workflow:{revision:number}}>('/projects/'+project.id+'/workflow');await request('/projects/'+project.id+'/signoff',{method:'POST',body:JSON.stringify({comment:signComment,expectedRevision:workflow.revision})});await onRefresh();setSignComment('')}catch(e){setError((e as Error).message)}finally{setBusy(false)}}
  async function mutate(path:string,body:unknown,method='PATCH'){setBusy(true);setError('');try{await request(path,{method,body:body===undefined?undefined:JSON.stringify(body)});await onRefresh();return true}catch(e){setError((e as Error).message);return false}finally{setBusy(false)}}
 

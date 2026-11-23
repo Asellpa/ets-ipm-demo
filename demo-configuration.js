@@ -9,12 +9,13 @@ function validDate(v){return typeof v==='string'&&/^\d{4}-\d{2}-\d{2}$/.test(v)&
 function urlError(value){try{const u=new URL(value);if(u.protocol!=='https:'||u.username||u.password)return true;return false}catch{return true}}
 function canAdmin(user,ps){return user.profileId==='prof-admin'||user.profileId==='prof-app-admin'||ps.manageBusinessRoles;}
 function configVersion(value){return crypto.createHash('sha256').update(JSON.stringify(value)).digest('hex');}
+function syncFocals(db,p){const contacts=db.clients.find(c=>c.id===p.clientId)?.contacts||[];p.clientFocal=(p.clientContactIds||[]).map(id=>contacts.find(c=>c.id===id)?.name).filter(Boolean).join('; ');const instance=db.projectWorkflows?.[p.id];if(instance){for(const node of instance.nodes)for(const field of require('./workflow-fields').fieldsFor(node))if(field.projectField==='clientFocal'){instance.states[node.id].values||={};instance.states[node.id].values[field.id]=p.clientFocal;}instance.revision++;}}
 async function handle(ctx){const{req,res,url,db,user,ps,body,send,audit,write,id,now,project,canReadTask,WF}=ctx;const path=url.pathname;
  if(path==='/api/project-types'){
   if(req.method==='GET'){send(res,200,{types:types(db),version:configVersion(types(db))});return true}
   if(req.method!=='PUT'){send(res,405,{error:'Use GET or PUT'});return true}if(!ps.manageSettings){send(res,403,{error:'Manage Settings permission required'});return true}
   const b=await body(req),list=b.types;if(b.expectedVersion!==configVersion(types(db))){send(res,409,{error:'Project types changed. Reload before saving.'});return true}
-  if(!Array.isArray(list)||list.length<2||list.length>50||list.some(t=>!t||typeof t!=='object')||new Set(list.map(t=>t.id)).size!==list.length||new Set(list.map(t=>String(t.name).trim().toLowerCase())).size!==list.length||list.some(t=>!t||!/^[-_a-zA-Z0-9]{1,80}$/.test(t.id)||typeof t.name!=='string'||!t.name.trim()||t.name.length>80||!kinds.includes(t.kind)||typeof t.active!=='boolean'||!db.workflowConfig.workflows.some(w=>w.id===t.workflowId&&(!w.projectType||w.projectType===t.kind)))){send(res,422,{error:'Use unique types with a name, access category and compatible workflow'});return true}
+  if(!Array.isArray(list)||list.length<2||list.length>50||list.some(t=>!t||typeof t!=='object')||new Set(list.map(t=>t.id)).size!==list.length||new Set(list.map(t=>String(t.name).trim().toLowerCase())).size!==list.length||list.some(t=>!t||typeof t.id!=='string'||!/^[-_a-zA-Z0-9]{1,80}$/.test(t.id)||typeof t.name!=='string'||!t.name.trim()||t.name.length>80||!kinds.includes(t.kind)||typeof t.active!=='boolean'||!db.workflowConfig.workflows.some(w=>w.id===t.workflowId&&(!w.projectType||w.projectType===t.kind)))){send(res,422,{error:'Use unique types with a name, access category and compatible workflow'});return true}
   if(types(db).some(t=>!list.some(n=>n.id===t.id))||list.some(t=>types(db).some(old=>old.id===t.id&&old.kind!==t.kind))){send(res,422,{error:'Archive types instead of deleting them; existing access categories cannot change'});return true}
   const before=types(db);db.settings.projectTypes=list.map(({id,name,kind,workflowId,active})=>({id,name:name.trim(),kind,workflowId,active}));audit(db,user,'Updated project types',{entityType:'settings',changes:[{field:'projectTypes',from:before,to:db.settings.projectTypes}]});write(db);send(res,200,{ok:true});return true
  }
@@ -33,7 +34,7 @@ async function handle(ctx){const{req,res,url,db,user,ps,body,send,audit,write,id
  }
  const match=path.match(/^\/api\/projects\/([^/]+)\/(document-links|focal-contacts)$/);
  if(match){const p=project(db,match[1]);if(!p||!canReadTask({},ps,p,db,user)){send(res,404,{error:'Project not found'});return true}const key=match[2]==='document-links'?'documentLinks':'clientContactIds';
-  const access=require('./field-access').mappedAccess(db,p,user,ps,WF);const focalAccess=access.clientFocal||'edit';
+  const access=require('./field-access').mappedAccess(db,p,user,ps,WF);const focalAccess=access.client==='hidden'?'hidden':access.clientFocal||'edit';
   if(key==='clientContactIds'&&focalAccess==='hidden'){send(res,403,{error:'Client focal access required'});return true}
   if(req.method==='GET'){send(res,200,{[key]:p[key]||[],version:configVersion(p[key]||[]),canEdit:!!ps.editProjects&&(key==='documentLinks'||focalAccess==='edit')});return true}
   if(req.method!=='PUT'){send(res,405,{error:'Use GET or PUT'});return true}if(!ps.editProjects||(key==='clientContactIds'&&focalAccess!=='edit')){send(res,403,{error:'Project editing and field access required'});return true}
@@ -41,7 +42,7 @@ async function handle(ctx){const{req,res,url,db,user,ps,body,send,audit,write,id
   let value=b[key];if(!Array.isArray(value)||value.length>50){send(res,422,{error:'Choose up to 50 entries'});return true}
   if(key==='documentLinks'){if(value.some(l=>!l||typeof l.label!=='string'||!l.label.trim()||l.label.length>120||typeof l.url!=='string'||l.url.length>2048||urlError(l.url))){send(res,422,{error:'Use a label and HTTPS URL without embedded credentials'});return true}value=value.map(l=>({label:l.label.trim(),url:l.url}));}
   else{const client=db.clients.find(c=>c.id===p.clientId);if(!client||value.some(v=>!client.contacts?.some(c=>c.id===v&&(c.active||(p.clientContactIds||[]).includes(v))))){send(res,422,{error:'Select active focal contacts belonging to this project’s client'});return true}value=[...new Set(value)];}
-  const before=p[key]||[];p[key]=value;audit(db,user,'Updated project '+match[2],{entityType:'project',entityId:p.id,projectId:p.id,changes:[{field:key==='clientContactIds'?'clientFocal':'documentLinks',from:before,to:value}]});write(db);send(res,200,{ok:true});return true
+  const before=p[key]||[];p[key]=value;if(key==='clientContactIds')syncFocals(db,p);audit(db,user,'Updated project '+match[2],{entityType:'project',entityId:p.id,projectId:p.id,changes:[{field:key==='clientContactIds'?'clientFocal':'documentLinks',from:before,to:value}]});write(db);send(res,200,{ok:true});return true
  }
  const contact=path.match(/^\/api\/clients\/([^/]+)\/contacts(?:\/([^/]+))?$/);
  if(contact){if(!ps.viewClients){send(res,403,{error:'View Clients permission required'});return true}const c=db.clients.find(c=>c.id===contact[1]);if(!c){send(res,404,{error:'Client not found'});return true}const contactList=c.contacts||=[];
@@ -52,4 +53,4 @@ async function handle(ctx){const{req,res,url,db,user,ps,body,send,audit,write,id
  }
  return false;
 }
-module.exports={types,resolveType,calendar,fields,profileError,canAdmin,configVersion,handle};
+module.exports={types,resolveType,calendar,fields,profileError,canAdmin,configVersion,syncFocals,handle};

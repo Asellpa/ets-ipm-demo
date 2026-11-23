@@ -1,4 +1,4 @@
-import {isTaskAssignee,sessionUser} from '../api';
+import {isTaskAssignee,canRecordTaskTime} from '../api';
 import ToneSelect from '../components/ToneSelect';
 import {taskStatuses} from '../project-utils';
 import TimeLog from '../components/TimeLog';
@@ -109,7 +109,7 @@ function ObjectDetails({
           body: JSON.stringify({
             action,
             expectedRevision: instance.revision,
-            ...(action === 'save' ? { values:Object.fromEntries(Object.entries(values).filter(([key,value])=>value!==node.values[key])) } : {}),
+            ...(action === 'save' ? { values:Object.fromEntries(Object.entries(values).filter(([key,value])=>value!==node.values[key]&&!(project.clientId&&node.fields.find(f=>f.id===key)?.projectField==='clientFocal'))) } : {}),
             comment,
           }),
         },
@@ -187,7 +187,7 @@ function ObjectDetails({
             void mutate('save');
           }}
         >
-          {node.fields.filter(field=>field.projectField!=='department'||field.required).map((field,index) => (
+          {node.fields.filter(field=>(field.required||!(field.projectField==='department'||/^ets\s*sub[ -]?dept$/i.test(field.label)))&&!(project.clientId&&field.projectField==='clientFocal')).map((field,index) => (
             <Fragment key={field.id}>{field.section!==node.fields[index-1]?.section&&field.section&&<h3 className="object-field-section">{field.section}</h3>}<label>
               {field.label}
               {field.required ? ' *' : ''}
@@ -270,7 +270,7 @@ function ObjectDetails({
             task={task}
             data={data}
             parentBusy={busy}
-            canLog={(!!data.permissions.manageTime||sessionUser(data)?.resourceEnabled!==false && isTaskAssignee(task,data)) && !!data.permissions.updateActualMH && !task.workflowLocked && !busy}
+            canLog={canRecordTaskTime(task,data)&&!busy}
             canUpdate={!task.workflowLocked&&(!!data.permissions.assignTasks||isTaskAssignee(task,data))}
             onSaved={onChange}
           />

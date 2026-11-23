@@ -139,6 +139,7 @@ Application permissions, object rules and field rules are cumulative restriction
 5. Saving template policies applies to new projects. The explicit existing-project option updates matching access rules without replacing structure, values or sign-offs. Review the affected records before choosing it.
 6. Register configuration controls column visibility/editability and project-type tab order. Showing a column does not grant access to its data.
 7. Financial protection remains separate. Team/owner fields do not grant extra access, pricing visibility or sign-off authority. Test sensitive changes with representative accounts.
+8. Admin can manage business role profiles, including TL, deputy and coordinator capabilities. System Administrator and administrator delegation stay protected. A job title alone never grants access.
 
 ## Manage users and checklist templates
 

@@ -16,3 +16,6 @@ export async function request<T>(path:string,options:RequestInit={}):Promise<T>{
 
 export function isTaskAssignee(task:{assignee?:string;assigneeId?:string|null},data:Session){return data.actorId&&Object.hasOwn(task,'assigneeId')?task.assigneeId===data.actorId:task.assignee===data.user;}
 export function sessionUser(data:Session){return data.actorId?data.users.find(u=>u.id===data.actorId):data.users.filter(u=>u.name===data.user).length===1?data.users.find(u=>u.name===data.user):undefined;}
+
+export function canApproveTaskTime(task:Task,data:Session){const p=data.projects.find(p=>p.id===task.projectId),me=sessionUser(data);return !!data.permissions.manageTime&&!!(data.permissions.manageTeam||data.permissions.manageUsers||me&&[p?.managerId,p?.supervisorId].includes(me.id));}
+export function canRecordTaskTime(task:Task,data:Session){return !!data.permissions.updateActualMH&&!task.workflowLocked&&Number(task.level||3)>=3&&!!task.assigneeId&&(canApproveTaskTime(task,data)||isTaskAssignee(task,data)&&sessionUser(data)?.resourceEnabled!==false);}

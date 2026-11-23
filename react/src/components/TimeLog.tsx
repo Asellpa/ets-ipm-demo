@@ -1,4 +1,4 @@
-import {sessionUser} from '../api';
+import {sessionUser,canApproveTaskTime} from '../api';
 import {useState,type FormEvent} from 'react';
 import {localToday,localTimeZone} from '../calendar';
 import {request,type Session,type Task,type TimeEntry} from '../api';
@@ -12,7 +12,7 @@ export default function TimeLog({task,data,canLog=true,onSaved}:{task:Task;data?
  const [date,setDate]=useState(localToday()),[hours,setHours]=useState(''),[description,setDescription]=useState(''),[reason,setReason]=useState('');
  const [entryId,setEntryId]=useState(()=>crypto.randomUUID()),[busy,setBusy]=useState(false),[error,setError]=useState(''),[editing,setEditing]=useState<string|null>(null);
  const me=data?sessionUser(data):undefined;
- const lead=!!data?.permissions.manageTime;
+ const lead=!!data&&canApproveTaskTime(task,data);
  const locked=task.workflowLocked||['Completed','Lost/Cancelled','Not Required','No-Go (Client)','No-Go (DOA)','Lost (DOA)'].includes(task.status||'');
  const mayCorrect=(e:TimeEntry)=>!!(data?.permissions.updateActualMH&&!locked&&(e.userId===me?.id||lead||data.profile==='System Administrator'));
  async function save(event:FormEvent){event.preventDefault();setBusy(true);setError('');try{await request('/tasks/'+encodeURIComponent(task.id)+'/time-entries',{method:'POST',body:JSON.stringify({entryId,date,hours:Number(hours),description,overrunReason:reason,timeZone:localTimeZone(),reason})});setHours('');setDescription('');setReason('');setEntryId(crypto.randomUUID());await onSaved()}catch(e){setError((e as Error).message)}finally{setBusy(false)}}
