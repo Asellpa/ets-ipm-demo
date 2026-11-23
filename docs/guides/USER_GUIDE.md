@@ -55,7 +55,7 @@ Use a reusable client profile instead of repeatedly typing names.
 2. In the project’s configured client field or editable register column, select the client from the list and save.
 3. Client summaries show projects for that client and permitted task-hour totals. They respect project, object, field and financial access; totals can differ between roles.
 4. Archive an unused client instead of removing its history. Existing links remain. Older text-only client values must be explicitly linked; matching text is not automatically a relationship.
-5. Within a client profile, add or edit several focal contacts if you have Manage Client Profiles permission. In a project, select its client first, expand Attachments & client focal contacts, tick the relevant people and Save focal contacts. Contacts can also be added there; archived contacts remain in existing selections until removed.
+5. Within a client profile, add or edit several focal contacts if you have Manage client contacts permission. In a project, select its client first, expand Attachments & client focal contacts, tick the relevant people and Save focal contacts. Contacts can also be added there; archived contacts remain in existing selections until removed.
 
 ## Create a project
 
@@ -139,7 +139,7 @@ Application permissions, object rules and field rules are cumulative restriction
 5. Saving template policies applies to new projects. The explicit existing-project option updates matching access rules without replacing structure, values or sign-offs. Review the affected records before choosing it.
 6. Register configuration controls column visibility/editability and project-type tab order. Showing a column does not grant access to its data.
 7. Financial protection remains separate. Team/owner fields do not grant extra access, pricing visibility or sign-off authority. Test sensitive changes with representative accounts.
-8. Admin can manage business role profiles, including TL, deputy and coordinator capabilities. System Administrator and administrator delegation stay protected. A job title alone never grants access.
+8. Admin can manage business role profiles, including TL, deputy and coordinator capabilities. Manage client contacts is separate from client company administration. System Administrator and administrator delegation stay protected. A job title alone never grants access.
 
 ## Manage users and checklist templates
 

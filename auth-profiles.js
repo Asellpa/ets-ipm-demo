@@ -1,4 +1,4 @@
-const PERMS = ['manageCapacityWarnings','manageBusinessRoles','manageCalendar','manageTime',
+const PERMS = ['manageClientContacts','manageCapacityWarnings','manageBusinessRoles','manageCalendar','manageTime',
   'viewClients','manageClients','manageChecklists','reviewChecklists',
   'viewCommercial','createCommercial','viewCommercialFields','viewRFQEngineering','createEER',
   'editProjects','deleteProjects','createTasks','assignTasks','updateActualMH','raiseEscalations',
@@ -29,6 +29,6 @@ const DEFAULT_PROFILES = [
     manageSettings:false, manageUsers:false, manageRoles:false
   }}
 ];
-DEFAULT_PROFILES.find(p=>p.id==='prof-ltse').permissions={...DEFAULT_PROFILES.find(p=>p.id==='prof-ltse').permissions,viewClients:true,manageClients:true,manageCalendar:true,manageTime:true,manageCapacityWarnings:true};
-DEFAULT_PROFILES.find(p=>p.id==='prof-senior').permissions={...DEFAULT_PROFILES.find(p=>p.id==='prof-senior').permissions,manageCalendar:true,manageTime:true,manageCapacityWarnings:true};
+DEFAULT_PROFILES.find(p=>p.id==='prof-ltse').permissions={...DEFAULT_PROFILES.find(p=>p.id==='prof-ltse').permissions,viewClients:true,manageClients:false,manageClientContacts:true,manageCalendar:true,manageTime:true,manageCapacityWarnings:true};
+DEFAULT_PROFILES.find(p=>p.id==='prof-senior').permissions={...DEFAULT_PROFILES.find(p=>p.id==='prof-senior').permissions,manageClientContacts:true,manageCalendar:true,manageTime:true,manageCapacityWarnings:true};
 module.exports={PERMS,DEFAULT_PROFILES,fullPermissions};
