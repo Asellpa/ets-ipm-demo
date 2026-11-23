@@ -15,7 +15,7 @@ Remain in demo until client acceptance. No production deployment and no live dat
 - Persistent warnings for three consecutive working days overbooked in the next 60 calendar days. Daily in-app reminders continue until a permitted lead resolves the conflict and records a reason. Staff can add blocker notes; checklist ticks and notification reads never resolve a warning.
 - Asia/Dubai working calendar, editable work week/holidays/reserve; board labels match configured non-working days. Legacy reserve remains unchanged until configured; fresh demo reset initialises one hour when no calendar exists.
 - Tasks & Departments, Audit & History and Reports marked Under construction. Existing tools retained for demo testing.
-- Register task lookups indexed once per render rather than repeatedly scanning the task collection. Authenticated, role-specific conditional refreshes avoid transferring and parsing unchanged bootstrap data; requests still recheck access.
+- Register task lookups indexed once per render rather than repeatedly scanning the task collection. Authenticated, role-specific conditional refreshes avoid transferring and parsing unchanged bootstrap data; requests still authenticate, and changes to data or permissions invalidate the internal validator shortcut. Only role-scoped response ETags are exposed.
 - Private backup-first local demo-clear command; accounts, clients and workflow configuration retained.
 
 ## Owner setup

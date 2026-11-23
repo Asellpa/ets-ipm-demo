@@ -1,4 +1,8 @@
 const DemoConfig=require('./demo-configuration');
+// Only validators are cached. Authentication is checked on every request; the
+// internal state fingerprint is never sent to clients. Role-scoped response ETags
+// remain unchanged when an unrelated private record changes.
+const bootstrapValidators=new Map();
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
@@ -246,14 +250,16 @@ async function handle(req,res){ let release;try{
     const pmap=Object.fromEntries(db.projects.map(p=>[p.id,p]));
     const visibleProjects=db.projects.filter(p=>p.type!=='commercial'||ps.viewCommercial);
     const warningSync=require('./capacity-warnings').sync(db,{id,audit,notify,perms,spreadHours});if(warningSync.changed)write(db);
+    const workDate=workToday(DemoConfig.calendar(db).timeZone),stateFingerprint=crypto.createHash('sha256').update(workDate).update(JSON.stringify(db)).digest('hex'),previousValidator=bootstrapValidators.get(user.id);
+    if(previousValidator?.stateFingerprint===stateFingerprint&&req.headers['if-none-match']===previousValidator.etag)return send(res,304,'','text/plain',{'ETag':previousValidator.etag});
     const visibleIds=new Set(visibleProjects.map(p=>p.id));
     const notifications=db.notifications.filter(n=>!n.capacityWarningId||n.capacityUserId===user.id||ps.manageCapacityWarnings).filter(n=>Assignment.canReadNotice(n,user)).filter(n=>!n.workflowNodeId||project(db,n.projectId)&&WF.canRead(db,project(db,n.projectId),user,ps,n.workflowNodeId));
-    const packet={authMode:process.env.AUTH_MODE==='proxy'?'proxy':'local',actorId:user.id,projectTypes:DemoConfig.types(db),preferences:{appearance:['light','dark','system'].includes(user.preferences?.appearance)?user.preferences.appearance:'system'},user:user.name,userId:user.userId,profile:profileOf(db,user)?.name,permissions:ps,clients:require('./clients').options(db,ps),
+    const packet={workDate,authMode:process.env.AUTH_MODE==='proxy'?'proxy':'local',actorId:user.id,projectTypes:DemoConfig.types(db),preferences:{appearance:['light','dark','system'].includes(user.preferences?.appearance)?user.preferences.appearance:'system'},user:user.name,userId:user.userId,profile:profileOf(db,user)?.name,permissions:ps,clients:require('./clients').options(db,ps),
       users:db.users.filter(x=>x.active).map(x=>({id:x.id,name:x.name,position:x.position,capacity:x.capacity,resourceEnabled:isResource(x),profileId:x.profileId})),
       projectLinks:[],
       projects:visibleProjects.map(p=>safeProject(p,ps,db,user)),workflowSummaries:Object.fromEntries(visibleProjects.filter(p=>canReadTask({},ps,p,db,user)&&db.projectWorkflows[p.id]).map(p=>{const w=WF.view(db,p,user,ps);return [p.id,{name:w.name,completed:w.completed,total:w.total,isComplete:w.isComplete,active:w.nodes.filter(n=>!n.parent&&n.status==='In progress').map(n=>n.name)}]})),
       tasks:db.tasks.filter(t=>visibleIds.has(t.projectId)&&canReadTask(t,ps,pmap[t.projectId],db,user)).map(t=>({...safeTask(t,ps,pmap[t.projectId]),level:taskLevel(t,pmap[t.projectId]),workflowPlanningAllowed:WF.canPlanTask(db,pmap[t.projectId],user,ps,t),workflowLocked:!!t.workflowNodeId&&!WF.canUpdateTask(db,pmap[t.projectId],user,ps,t)})),
-      comments:db.comments.filter(c=>canReadTask(db.tasks.find(t=>t.id===c.taskId),ps,pmap[c.projectId],db,user)), escalations:ps.viewReports?db.escalations.filter(e=>canReadTask(db.tasks.find(t=>t.id===e.taskId),ps,pmap[e.projectId],db,user)):[], notifications, audit:ps.viewAudit?db.audit.filter(a=>workflowAuditVisible(db,a,user,ps)).map(a=>safeAudit(a,ps,db,user)):[], leave:db.leave.filter(l=>ps.manageLeave||l.userId===user.id), settings:db.settings};const etag='"'+crypto.createHash('sha256').update(JSON.stringify(packet)).digest('hex')+'"';if(req.headers['if-none-match']===etag)return send(res,304,'','text/plain',{'ETag':etag});return send(res,200,packet,'application/json',{'ETag':etag});
+      comments:db.comments.filter(c=>canReadTask(db.tasks.find(t=>t.id===c.taskId),ps,pmap[c.projectId],db,user)), escalations:ps.viewReports?db.escalations.filter(e=>canReadTask(db.tasks.find(t=>t.id===e.taskId),ps,pmap[e.projectId],db,user)):[], notifications, audit:ps.viewAudit?db.audit.filter(a=>workflowAuditVisible(db,a,user,ps)).map(a=>safeAudit(a,ps,db,user)):[], leave:db.leave.filter(l=>ps.manageLeave||l.userId===user.id), settings:db.settings};const etag='"'+crypto.createHash('sha256').update(JSON.stringify(packet)).digest('hex')+'"';bootstrapValidators.set(user.id,{stateFingerprint,etag});if(bootstrapValidators.size>1000)bootstrapValidators.delete(bootstrapValidators.keys().next().value);if(req.headers['if-none-match']===etag)return send(res,304,'','text/plain',{'ETag':etag});return send(res,200,packet,'application/json',{'ETag':etag});
   }
 
   if(req.method==='GET'&&u.pathname==='/api/feedback'){
