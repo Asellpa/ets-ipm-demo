@@ -27,7 +27,7 @@ test('profile disclosure contains account actions, supports keyboard and outside
 
 test('notification close and read controls remain usable after scrolling a long list on desktop and mobile',async({page},testInfo)=>{
  await login(page);
- await page.route('**/api/bootstrap',async route=>{const response=await route.fetch(),data=await response.json();await route.fulfill({response,json:{...data,notifications:Array.from({length:45},(_,i)=>({id:'scroll-notice-'+i,ts:'2026-11-25T08:00:00Z',text:'Notification '+i+': Review the assigned project work and handover details before proceeding. '.repeat(2),readByIds:[],readBy:[]}))}})});
+ await page.route('**/api/bootstrap',async route=>{const headers={...route.request().headers()};delete headers['if-none-match'];const response=await route.fetch({headers}),data=await response.json();await route.fulfill({response,json:{...data,notifications:Array.from({length:45},(_,i)=>({id:'scroll-notice-'+i,ts:'2026-11-25T08:00:00Z',text:'Notification '+i+': Review the assigned project work and handover details before proceeding. '.repeat(2),readByIds:[],readBy:[]}))}})});
  await page.reload();await expect(page.getByRole('button',{name:'Notifications, 45 unread',exact:true})).toBeVisible();
  try{
   for(const [name,width,height]of [['Light',1440,900],['Dark',390,640]]){

@@ -154,7 +154,7 @@ td:last-child:has(>button){white-space:nowrap}
 .my-work-layout{display:grid;grid-template-columns:minmax(0,1fr) minmax(300px,370px);gap:20px;align-items:start}
 .my-work-tasks,.my-work-checklists{min-width:0}.my-work-tasks .stats{grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}.my-work-tasks .stat{padding:18px}
 .checklists-embedded{border:1px solid var(--line);border-radius:12px;background:var(--surface);padding:18px}
-.daily-checklist-heading{display:grid;gap:12px;margin-bottom:16px}.daily-checklist-heading h2,.daily-checklist-heading .field-help{margin:0}.daily-checklist-actions{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:8px}.daily-checklist-actions button{width:100%;margin:0;white-space:normal}
+.daily-checklist-heading{display:grid;gap:12px;margin-bottom:16px}.daily-checklist-heading h2,.daily-checklist-heading .field-help{margin:0}.daily-checklist-actions{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:8px;align-items:stretch}.daily-checklist-actions button{width:100%;margin:0;white-space:normal}
 .checklists-embedded .panel{padding:16px;margin-bottom:14px}.checklists-embedded .panel:last-child{margin-bottom:0}.checklists-embedded h3{margin-top:0}
 .checklist-refresh{margin:10px 0}.checklist-progress{display:flex;align-items:center;gap:10px;flex-wrap:wrap}.checklist-progress small{color:var(--c-805600)}
 .checklist-item:has(input:checked){background:var(--c-f0f9f2);border-radius:6px}.checklist-item:has(input:checked)>span{color:var(--c-1b683a)}.checklist-item input{accent-color:var(--c-087a82);width:17px;height:17px}
@@ -189,8 +189,10 @@ select.tone-select:disabled{opacity:.8;cursor:not-allowed}
 .notification-header .toolbar>button{width:40px;height:40px;padding:6px;flex-shrink:0}
 .notification-body{overflow-y:auto;overscroll-behavior:contain;min-height:0;padding:0 20px 20px}
 .checklists-embedded .panel{background:var(--page)}
-.checklists-embedded .form-actions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+.checklists-embedded .form-actions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;align-items:stretch}
 .checklists-embedded .form-actions button,.checklists-embedded .checklist-start{width:100%;margin:0;white-space:normal}
 .checklist-empty{padding:16px;border:1px dashed var(--line);border-radius:8px;background:var(--page)}
 .checklist-empty p{margin:8px 0 0;color:var(--muted-text)}
 @media(max-width:600px){.notification-dialog{inset:70px 12px auto auto;width:calc(100vw - 24px);max-height:calc(100dvh - 82px)}}
+
+.main>header .identity{margin-left:auto;justify-content:flex-end}
