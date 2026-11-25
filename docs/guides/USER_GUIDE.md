@@ -9,15 +9,15 @@ Choose the area for the work you need to do.
 1. Sign in using the method provided by your administrator. Company sign-in uses your organisation’s identity account; local environments use a username, user ID and password.
 2. Use My Work for your assigned tasks and daily shift checklists. Use Project Register to find and open projects; Grid and Kanban show the same records.
 3. Open a project by selecting its title in Grid or anywhere on its Kanban card. Use Expand in the project window for more space.
-4. Use the notification bell for unread notices. Use Send feedback to report a problem, including the steps and expected result. Never include passwords or confidential documents in feedback screenshots.
-5. Open Preferences in the header and choose Light, Dark or Device appearance. The choice is saved to your account; Device follows your operating system. Changing appearance does not change permissions or project data.
+4. Use the notification bell for unread notices. The list scrolls independently; Close notifications and the read controls stay visible. Escape also closes the dialog. Use Send feedback to report a problem, including the steps and expected result. Never include passwords or confidential documents in feedback screenshots.
+5. Open Account menu using the profile icon in the header, then choose Preferences and select Light, Dark or Device appearance. The choice is saved to your account; Device follows your operating system. Changing appearance does not change permissions or project data. Your name, role and Sign out are also in Account menu.
 6. If an area or action is missing, ask your administrator to check your role and the project’s access rules. Team membership alone does not grant access.
 
 ## Complete your daily checklist
 
 Readiness and handover checks belong to you and the displayed work date.
 
-1. Open My Work. Daily shift checklists appears beside tasks on a wide screen and below them on smaller screens. Only templates assigned to your role appear.
+1. Open My Work. Daily shift checklists appears beside tasks on a wide screen and below them on smaller screens. Only templates assigned to your role appear. Use Open checklists and Refresh for the full checklist area or to reload your daily records.
 2. Check the displayed date and time zone, then select Start checklist for the relevant start-of-shift or end-of-day template.
 3. Tick completed items, add handover notes if needed, and choose Save draft before leaving. A tick is not saved until you save or submit.
 4. Finish all required items, then choose Submit checklist. Optional items may remain unchecked. Submitted records become read-only.

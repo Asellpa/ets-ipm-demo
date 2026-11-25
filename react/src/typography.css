@@ -127,3 +127,5 @@ button[aria-label^='Close'], .notification-dialog .toolbar>button { font-size: v
 .sidebar nav button, .profile-card h3, .checklist-item>span { overflow-wrap: anywhere; }
 .notification-badge { min-width: 1.125rem; height: auto; min-height: 1.125rem; }
 .canvas-node .node-select { gap: .25rem; }
+
+.account-details strong { font-size: var(--text-body); }

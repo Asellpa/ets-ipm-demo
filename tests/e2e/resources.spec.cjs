@@ -1,3 +1,4 @@
+const {signOut}=require('./account-actions.cjs');
 const {test,expect}=require('@playwright/test');
 test.use({timezoneId:'Asia/Colombo'});
 async function login(page,user='Stephan',id='123'){await page.goto('/');await page.getByLabel('Username',{exact:true}).fill(user);await page.getByLabel('User ID',{exact:true}).fill(id);await page.getByLabel('Password',{exact:true}).fill('Testing');await page.getByRole('button',{name:'Sign in',exact:true}).click();await expect(page.getByRole('heading',{name:'Overview',level:1})).toBeVisible()}
@@ -9,7 +10,7 @@ test('weekly board aligns dates and drills into overbooked tasks for reassignmen
 });
 test('capacity-only profile can read the board but cannot record leave or reassign',async({page})=>{
  await login(page);const suffix=Date.now().toString(36),name='Planner '+suffix;
- let r=await page.request.post('/api/admin/profiles',{data:{name,permissions:{viewCapacity:true}}});const {id}=await r.json();r=await page.request.post('/api/admin/users',{data:{name,username:name,userId:name,password:'Testing',profileId:id}});expect(r.status()).toBe(201);await page.getByRole('button',{name:'Sign out',exact:true}).click();await login(page,name,name);await page.getByRole('button',{name:'Resource Planning',exact:true}).click();await expect(page.getByRole('heading',{name:'Weekly capacity board'})).toBeVisible();await expect(page.getByRole('button',{name:'+ Record leave',exact:true})).toHaveCount(0);expect((await page.request.post('/api/leave',{data:{user:name,date:'2026-11-03',type:'Leave'}})).status()).toBe(403);
+ let r=await page.request.post('/api/admin/profiles',{data:{name,permissions:{viewCapacity:true}}});const {id}=await r.json();r=await page.request.post('/api/admin/users',{data:{name,username:name,userId:name,password:'Testing',profileId:id}});expect(r.status()).toBe(201);await signOut(page);await login(page,name,name);await page.getByRole('button',{name:'Resource Planning',exact:true}).click();await expect(page.getByRole('heading',{name:'Weekly capacity board'})).toBeVisible();await expect(page.getByRole('button',{name:'+ Record leave',exact:true})).toHaveCount(0);expect((await page.request.post('/api/leave',{data:{user:name,date:'2026-11-03',type:'Leave'}})).status()).toBe(403);
 });
 test('future workflow work is schedulable and an assignee can log dated actual hours',async({page})=>{
  await login(page);const suffix=Date.now().toString(36),title='Hours project '+suffix,taskTitle='Logged task '+suffix;

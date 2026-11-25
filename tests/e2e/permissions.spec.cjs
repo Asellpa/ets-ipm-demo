@@ -1,3 +1,4 @@
+const {signOut}=require('./account-actions.cjs');
 const {test,expect}=require('@playwright/test');
 async function login(page,name,id,password){
  await page.goto('/');
@@ -24,7 +25,7 @@ test('custom restricted role is enforced by the backend and React navigation',as
   return {status:r.status,data:await r.json()};
  },{name:'QA Restricted User',username,userId,password,profileId:createdRole.data.id});
  expect(createdUser.status).toBe(201);
- await page.getByRole('button',{name:'Sign out'}).click();
+ await signOut(page);
  await login(page,username,userId,password);
  await expect(page.getByRole('button',{name:'Role Management'})).toHaveCount(0);
  await expect(page.getByRole('button',{name:'Manage Users'})).toHaveCount(0);
@@ -59,7 +60,7 @@ test('commercial RFQ visibility and pricing are enforced server-side',async({pag
   return {status:r.status,data:await r.json()};
  },{name:'QA Commercial Limited',username,userId,password,profileId:role.data.id});
  expect(user.status).toBe(201);
- await page.getByRole('button',{name:'Sign out'}).click();
+ await signOut(page);
  await login(page,username,userId,password);
  const bootstrap=await page.evaluate(async()=>(await fetch('/api/bootstrap',{credentials:'same-origin'})).json());
  const target=bootstrap.projects.find(p=>p.id===project.data.project.id);
